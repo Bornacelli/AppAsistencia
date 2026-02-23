@@ -1,0 +1,60 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    function isAuth() {
+      return request.auth != null;
+    }
+
+    function getUserData() {
+      return get(/databases/$(database)/documents/leaders/$(request.auth.uid)).data;
+    }
+
+    function isAdmin() {
+      return isAuth() && getUserData().role == 'admin' && getUserData().active == true;
+    }
+
+    // Config: readable by anyone (used for setup detection without auth),
+    // writable only by admins (or on first-time creation when no admin exists yet)
+    match /config/{doc} {
+      allow read: if true;
+      allow write: if isAdmin();
+      // Allow writing config when creating first admin (user is auth'd but may not have leaders doc yet)
+      allow create: if isAuth();
+    }
+
+    // Groups: anyone authenticated can read, only admin can write
+    match /groups/{doc} {
+      allow read: if isAuth();
+      allow write: if isAdmin();
+    }
+
+    // Leaders: require auth to read individual docs; allow create for first admin setup
+    match /leaders/{userId} {
+      allow read: if isAuth();
+      // Allow creating own document (used during signup / first admin setup)
+      allow create: if isAuth() && request.auth.uid == userId;
+      // Only admins can update other users; users can update their own doc (e.g. preferences)
+      allow update: if isAdmin() || (isAuth() && request.auth.uid == userId);
+      allow delete: if isAdmin();
+    }
+
+    // Members: any authenticated user can read/write (leaders manage their group)
+    match /members/{doc} {
+      allow read:   if isAuth();
+      allow write:  if isAuth();
+    }
+
+    // Visitors: any authenticated user can read/write
+    match /visitors/{doc} {
+      allow read:   if isAuth();
+      allow write:  if isAuth();
+    }
+
+    // Attendance: any authenticated user can read/write
+    match /attendance/{doc} {
+      allow read:   if isAuth();
+      allow write:  if isAuth();
+    }
+  }
+}

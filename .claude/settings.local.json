@@ -1,0 +1,9 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(tail:*)",
+      "Bash(cd /c/Users/agm/Documents/pruebaAsistencia && npm run build 2>&1)",
+      "Bash(cd:*)"
+    ]
+  }
+}

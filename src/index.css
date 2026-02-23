@@ -1,0 +1,97 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  --bg:        #080c14;
+  --surface:   #0e1520;
+  --card:      #131d2e;
+  --border:    rgba(255,255,255,0.07);
+  --accent:    #3b82f6;
+  --accent-g:  linear-gradient(135deg, #3b82f6, #6366f1);
+  --green:     #22c55e;
+  --green-bg:  rgba(34,197,94,0.1);
+  --green-bdr: rgba(34,197,94,0.2);
+  --red:       #ef4444;
+  --red-bg:    rgba(239,68,68,0.1);
+  --red-bdr:   rgba(239,68,68,0.2);
+  --amber:     #f59e0b;
+  --amber-bg:  rgba(245,158,11,0.1);
+  --amber-bdr: rgba(245,158,11,0.2);
+  --text:      #f0f4ff;
+  --text-2:    #8896b0;
+  --text-3:    #3d4f6b;
+  --r:         16px;
+  --r-sm:      10px;
+  --shadow:    0 4px 24px rgba(0,0,0,0.4);
+}
+
+* {
+  box-sizing: border-box;
+  -webkit-tap-highlight-color: transparent;
+}
+
+html, body, #root {
+  height: 100%;
+}
+
+body {
+  font-family: 'Plus Jakarta Sans', sans-serif;
+  background-color: var(--bg);
+  color: var(--text);
+  min-height: 100dvh;
+  overscroll-behavior: none;
+  -webkit-font-smoothing: antialiased;
+}
+
+/* Scrollbar */
+::-webkit-scrollbar { width: 4px; height: 4px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: var(--text-3); border-radius: 2px; }
+
+/* Input reset */
+input, textarea, select {
+  -webkit-appearance: none;
+  appearance: none;
+}
+
+/* Animations */
+@keyframes spin {
+  to { transform: rotate(360deg); }
+}
+
+@keyframes pop {
+  0% { transform: scale(0); }
+  70% { transform: scale(1.15); }
+  100% { transform: scale(1); }
+}
+
+@keyframes slideUp {
+  from { opacity: 0; transform: translateY(20px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+@keyframes fadeIn {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+.animate-spin-slow { animation: spin 0.75s linear infinite; }
+.animate-pop { animation: pop 0.4s cubic-bezier(.36,.07,.19,.97); }
+.animate-slide-up { animation: slideUp 0.3s ease-out; }
+.animate-fade-in { animation: fadeIn 0.2s ease-out; }
+
+/* Active press effect */
+.press:active { transform: scale(0.97); }
+.press-sm:active { transform: scale(0.93); }
+
+/* Page transitions */
+.page-enter { animation: slideUp 0.25s ease-out; }
+
+/* Gradient text */
+.gradient-text {
+  background: var(--accent-g);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+}

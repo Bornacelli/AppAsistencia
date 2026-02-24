@@ -32,8 +32,9 @@ export default function MemberForm() {
     phone:           fromVisitor?.phone || '',
     address:         '',
     joinDate:        todayStr(),
-    spiritualStatus: 'following',
+    spiritualStatus: fromVisitor ? 'new' : 'new',
     groupId:         fromVisitor?.groupId || profile?.groupIds?.[0] || '',
+    referredBy:      fromVisitor?.referredBy || '',
     active:          true,
   })
 
@@ -67,6 +68,7 @@ export default function MemberForm() {
           joinDate:        d.joinDate        || '',
           spiritualStatus: d.spiritualStatus || 'new',
           groupId:         d.groupId         || '',
+          referredBy:      d.referredBy      || '',
           active:          d.active !== false,
         })
       }
@@ -95,6 +97,7 @@ export default function MemberForm() {
         joinDate:        form.joinDate || null,
         spiritualStatus: form.spiritualStatus,
         groupId:         form.groupId || null,
+        referredBy:      form.referredBy.trim() || null,
         active:          form.active,
         updatedAt:       new Date().toISOString(),
       }
@@ -132,11 +135,13 @@ export default function MemberForm() {
         <Inp label="WhatsApp" type="tel" value={form.phone} onChange={e => set('phone', e.target.value)} placeholder="+57 300 000 0000" />
         <Inp label="Dirección" value={form.address} onChange={e => set('address', e.target.value)} placeholder="Barrio, ciudad" />
         <Inp label="Fecha de ingreso" type="date" value={form.joinDate} onChange={e => set('joinDate', e.target.value)} style={{ colorScheme: 'dark' }} />
+        <Inp label="Invitado por" value={form.referredBy} onChange={e => set('referredBy', e.target.value)} placeholder="Nombre de quien lo invitó (opcional)" />
 
         <Sel label="Estado espiritual" value={form.spiritualStatus} onChange={e => set('spiritualStatus', e.target.value)}>
           <option value="new">Nuevo</option>
           <option value="following">En seguimiento</option>
           <option value="consolidated">Consolidado</option>
+          <option value="member">Miembro</option>
           <option value="leader">Líder</option>
         </Sel>
 

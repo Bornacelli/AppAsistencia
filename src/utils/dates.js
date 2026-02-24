@@ -79,6 +79,29 @@ export function isBirthdayToday(birthDateStr) {
   return birthDateStr.slice(5) === todayMD
 }
 
+// Format only the month/day part of a birthdate (no year), e.g. "24 de febrero"
+export function formatBirthday(birthDateStr) {
+  if (!birthDateStr) return ''
+  const mm = parseInt(birthDateStr.slice(5, 7), 10)
+  const dd = parseInt(birthDateStr.slice(8, 10), 10)
+  if (isNaN(mm) || isNaN(dd)) return ''
+  const d = new Date(2000, mm - 1, dd)
+  return d.toLocaleDateString('es-ES', { day: 'numeric', month: 'long' })
+}
+
+// Days until next birthday (0 = today)
+export function daysUntilBirthday(birthDateStr) {
+  if (!birthDateStr) return null
+  const mm = parseInt(birthDateStr.slice(5, 7), 10)
+  const dd = parseInt(birthDateStr.slice(8, 10), 10)
+  if (isNaN(mm) || isNaN(dd)) return null
+  const today = new Date()
+  today.setHours(0, 0, 0, 0)
+  let bd = new Date(today.getFullYear(), mm - 1, dd)
+  if (bd < today) bd = new Date(today.getFullYear() + 1, mm - 1, dd)
+  return Math.round((bd - today) / (1000 * 60 * 60 * 24))
+}
+
 // Difference in days between two YYYY-MM-DD strings
 export function daysBetween(str1, str2) {
   const d1 = parseLocalDate(str1)

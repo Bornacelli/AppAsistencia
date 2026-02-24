@@ -1,4 +1,4 @@
-import { House, ClipboardText, Users, Bell, DotsThreeOutline, ChartBar, Gear, UserCircle, Handshake } from '@phosphor-icons/react'
+import { House, ClipboardText, Users, Bell, DotsThreeOutline, ChartBar, Gear, UserCircle, CalendarBlank, Cake } from '@phosphor-icons/react'
 import { NavLink, useNavigate } from 'react-router-dom'
 import { useState } from 'react'
 import { signOut } from 'firebase/auth'
@@ -92,11 +92,12 @@ export default function BottomNav() {
             </p>
 
             <div className="flex flex-col gap-1">
-              <MoreItem icon={ChartBar} label="Historial" to="/history" onClose={() => setMoreOpen(false)} />
-              <MoreItem icon={Handshake} label="Visitantes" to="/visitors" onClose={() => setMoreOpen(false)} />
-              {isAdmin && <MoreItem icon={UserCircle} label="Líderes" to="/leaders" onClose={() => setMoreOpen(false)} />}
-              {isAdmin && <MoreItem icon={ChartBar} label="Reportes" to="/reports" onClose={() => setMoreOpen(false)} />}
-              {isAdmin && <MoreItem icon={Gear} label="Configuración" to="/settings" onClose={() => setMoreOpen(false)} />}
+              <MoreItem icon={CalendarBlank} label="Reuniones"    to="/meetings"   onClose={() => setMoreOpen(false)} />
+              <MoreItem icon={ChartBar}      label="Historial"    to="/history"    onClose={() => setMoreOpen(false)} />
+              <MoreItem icon={Cake}          label="Cumpleaños"   to="/birthdays"  onClose={() => setMoreOpen(false)} />
+              {isAdmin && <MoreItem icon={UserCircle} label="Líderes"       to="/leaders"  onClose={() => setMoreOpen(false)} />}
+              {isAdmin && <MoreItem icon={ChartBar}   label="Reportes"      to="/reports"  onClose={() => setMoreOpen(false)} />}
+              {isAdmin && <MoreItem icon={Gear}        label="Configuración" to="/settings" onClose={() => setMoreOpen(false)} />}
 
               <div className="my-2" style={{ borderTop: '1px solid var(--border)' }} />
 

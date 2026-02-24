@@ -6,11 +6,11 @@ import { useAuth } from '../context/AuthContext'
 import TopBar from '../components/layout/TopBar'
 import Avatar from '../components/ui/Avatar'
 import LoadingSpinner from '../components/ui/LoadingSpinner'
-import { PencilSimple, Phone, MapPin, Calendar, CheckCircle, XCircle, Clock, MinusCircle } from '@phosphor-icons/react'
+import { PencilSimple, Phone, MapPin, Calendar, CheckCircle, XCircle, Clock, MinusCircle, Handshake } from '@phosphor-icons/react'
 import { formatDate, ageFrom } from '../utils/dates'
 
-const SPIRITUAL_LABEL = { new: 'Nuevo', following: 'En seguimiento', consolidated: 'Consolidado', leader: 'Líder' }
-const SPIRITUAL_COLOR = { new: 'var(--amber)', following: 'var(--accent)', consolidated: 'var(--green)', leader: '#a78bfa' }
+const SPIRITUAL_LABEL = { new: 'Nuevo', following: 'En seguimiento', consolidated: 'Consolidado', member: 'Miembro', leader: 'Líder' }
+const SPIRITUAL_COLOR = { new: 'var(--amber)', following: 'var(--accent)', consolidated: 'var(--green)', member: '#10b981', leader: '#a78bfa' }
 
 export default function MemberProfile() {
   const { id }  = useParams()
@@ -21,7 +21,7 @@ export default function MemberProfile() {
   const [member,  setMember]  = useState(null)
   const [history, setHistory] = useState([])
   const [loading, setLoading] = useState(true)
-  const [group,   setGroup]   = useState(null)
+  const [groups,  setGroups]  = useState([])
 
   useEffect(() => { loadData() }, [id])
 
@@ -33,9 +33,10 @@ export default function MemberProfile() {
       const m = { id: snap.id, ...snap.data() }
       setMember(m)
 
-      if (m.groupId) {
-        const gSnap = await getDoc(doc(db, 'groups', m.groupId))
-        if (gSnap.exists()) setGroup(gSnap.data())
+      const groupIds = m.groupIds?.length > 0 ? m.groupIds : (m.groupId ? [m.groupId] : [])
+      if (groupIds.length > 0) {
+        const gSnaps = await Promise.all(groupIds.map(gid => getDoc(doc(db, 'groups', gid))))
+        setGroups(gSnaps.filter(s => s.exists()).map(s => ({ id: s.id, ...s.data() })))
       }
 
       // Attendance history for this member
@@ -94,7 +95,9 @@ export default function MemberProfile() {
               {SPIRITUAL_LABEL[member.spiritualStatus]}
             </span>
           )}
-          {group && <span className="text-[11px]" style={{ color: 'var(--text-3)' }}>{group.name}</span>}
+          {groups.map(g => (
+            <span key={g.id} className="text-[11px]" style={{ color: 'var(--text-3)' }}>{g.name}</span>
+          ))}
           {member.active === false && (
             <span className="text-[11px] font-bold px-2.5 py-1 rounded-full" style={{ background: 'var(--red-bg)', color: 'var(--red)' }}>Inactivo</span>
           )}
@@ -120,10 +123,11 @@ export default function MemberProfile() {
         {/* Info */}
         <div className="rounded-[var(--r)] overflow-hidden" style={{ background: 'var(--surface)', border: '1px solid var(--border)' }}>
           {[
-            member.phone    && { icon: Phone,    label: 'WhatsApp',         value: member.phone,                  href: `https://wa.me/${member.phone.replace(/\D/g,'')}` },
-            member.address  && { icon: MapPin,   label: 'Dirección',        value: member.address },
-            member.birthDate && { icon: Calendar, label: 'Cumpleaños',      value: `${formatDate(member.birthDate, { day: 'numeric', month: 'long' })} (${ageFrom(member.birthDate)} años)` },
-            member.joinDate && { icon: Calendar,  label: 'Fecha de ingreso', value: formatDate(member.joinDate, { day: 'numeric', month: 'long', year: 'numeric' }) },
+            member.phone      && { icon: Phone,     label: 'WhatsApp',         value: member.phone,                  href: `https://wa.me/${member.phone.replace(/\D/g,'')}` },
+            member.address    && { icon: MapPin,    label: 'Dirección',        value: member.address },
+            member.birthDate  && { icon: Calendar,  label: 'Cumpleaños',       value: `${formatDate(member.birthDate, { day: 'numeric', month: 'long' })} (${ageFrom(member.birthDate)} años)` },
+            member.joinDate   && { icon: Calendar,  label: 'Fecha de ingreso', value: formatDate(member.joinDate, { day: 'numeric', month: 'long', year: 'numeric' }) },
+            member.referredBy && { icon: Handshake, label: 'Invitado por',     value: member.referredBy },
           ].filter(Boolean).map((item, i, arr) => (
             <div key={item.label} className="flex items-center gap-3 px-4 py-3"
               style={{ borderBottom: i < arr.length - 1 ? '1px solid var(--border)' : 'none' }}>

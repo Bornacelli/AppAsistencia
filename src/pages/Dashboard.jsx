@@ -11,7 +11,8 @@ import {
 } from '@phosphor-icons/react'
 import { todayStr, formatDate, isBirthdaySoon, isBirthdayToday, localDateStr } from '../utils/dates'
 
-function StatTile({ icon: Icon, value, label, color = 'blue' }) {
+function StatTile({ icon: Icon, value, label, color = 'blue', to }) {
+  const navigate = useNavigate()
   const colors = {
     blue:  { bg: 'rgba(59,130,246,0.12)', color: 'var(--accent)' },
     green: { bg: 'var(--green-bg)',        color: 'var(--green)' },
@@ -19,8 +20,8 @@ function StatTile({ icon: Icon, value, label, color = 'blue' }) {
     amber: { bg: 'var(--amber-bg)',        color: 'var(--amber)' },
   }
   const c = colors[color]
-  return (
-    <div className="flex flex-col gap-3 p-4 rounded-[var(--r)]" style={{ background: 'var(--surface)', border: '1px solid var(--border)' }}>
+  const inner = (
+    <>
       <div className="w-9 h-9 rounded-[10px] flex items-center justify-center" style={{ background: c.bg, color: c.color }}>
         <Icon size={20} />
       </div>
@@ -28,6 +29,20 @@ function StatTile({ icon: Icon, value, label, color = 'blue' }) {
         <div className="font-syne font-extrabold text-3xl" style={{ color: 'var(--text)' }}>{value}</div>
         <div className="text-xs font-semibold mt-0.5" style={{ color: 'var(--text-2)' }}>{label}</div>
       </div>
+    </>
+  )
+  if (to) {
+    return (
+      <button onClick={() => navigate(to)}
+        className="flex flex-col gap-3 p-4 rounded-[var(--r)] text-left press"
+        style={{ background: 'var(--surface)', border: '1px solid var(--border)' }}>
+        {inner}
+      </button>
+    )
+  }
+  return (
+    <div className="flex flex-col gap-3 p-4 rounded-[var(--r)]" style={{ background: 'var(--surface)', border: '1px solid var(--border)' }}>
+      {inner}
     </div>
   )
 }
@@ -185,8 +200,8 @@ export default function Dashboard() {
 
         {/* Stats grid */}
         <div className="grid grid-cols-2 gap-3">
-          <StatTile icon={Users}        value={stats.totalMembers}  label="Miembros"  color="blue" />
-          <StatTile icon={CalendarCheck} value={stats.totalSessions} label="Reuniones" color="green" />
+          <StatTile icon={Users}        value={stats.totalMembers}  label="Miembros"  color="blue"  to="/members" />
+          <StatTile icon={CalendarCheck} value={stats.totalSessions} label="Reuniones" color="green" to="/meetings" />
         </div>
 
         {/* Last service summary */}
@@ -250,7 +265,12 @@ export default function Dashboard() {
         {/* Recent sessions */}
         {recentRecs.length > 0 && (
           <div>
-            <p className="text-[11px] font-bold uppercase tracking-widest mb-2" style={{ color: 'var(--text-2)' }}>Últimas reuniones</p>
+            <div className="flex items-center justify-between mb-2">
+              <p className="text-[11px] font-bold uppercase tracking-widest" style={{ color: 'var(--text-2)' }}>Últimas reuniones</p>
+              <button onClick={() => navigate('/meetings')} className="text-[11px] font-bold press" style={{ color: 'var(--accent)' }}>
+                Ver todas
+              </button>
+            </div>
             <div className="rounded-[var(--r)] overflow-hidden" style={{ background: 'var(--surface)', border: '1px solid var(--border)' }}>
               {recentRecs.slice(0, 5).map((r, i) => {
                 const total   = stats.totalMembers
@@ -283,9 +303,9 @@ export default function Dashboard() {
         <div>
           <p className="text-[11px] font-bold uppercase tracking-widest mb-2" style={{ color: 'var(--text-2)' }}>Accesos rápidos</p>
           <div className="flex flex-col gap-2">
-            <QuickAction icon={Users}    label="Gestionar miembros"  to="/members" />
-            <QuickAction icon={Handshake} label="Visitantes"         to="/visitors" />
-            <QuickAction icon={ChartBar} label="Historial"           to="/history" />
+            <QuickAction icon={Users}        label="Personas"   to="/members" />
+            <QuickAction icon={CalendarCheck} label="Reuniones" to="/meetings" />
+            <QuickAction icon={ChartBar}     label="Historial"  to="/history" />
             {isAdmin && <QuickAction icon={ChartBar} label="Reportes" to="/reports" />}
           </div>
         </div>

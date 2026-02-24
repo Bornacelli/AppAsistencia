@@ -1,5 +1,5 @@
 import { createContext, useContext, useState, useEffect } from 'react'
-import { onAuthStateChanged } from 'firebase/auth'
+import { onAuthStateChanged, signOut } from 'firebase/auth'
 import { doc, getDoc } from 'firebase/firestore'
 import { auth, db } from '../firebase'
 
@@ -19,13 +19,16 @@ export function AuthProvider({ children }) {
           const snap = await getDoc(doc(db, 'leaders', fbUser.uid))
           if (snap.exists()) {
             setProfile({ uid: fbUser.uid, ...snap.data() })
+            setUser(fbUser)
           } else {
-            setProfile(null)
+            // Sesión activa pero sin perfil en Firestore → cerrar sesión automáticamente
+            await signOut(auth)
+            return
           }
         } catch {
           setProfile(null)
+          setUser(fbUser)
         }
-        setUser(fbUser)
         setHasUsers(true)
       } else {
         // Not signed in — check if the app has been initialized

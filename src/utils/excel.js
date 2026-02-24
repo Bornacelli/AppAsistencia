@@ -133,6 +133,136 @@ export function exportMembersList(members, groupName = 'Todos') {
   exportToExcel(filename, `Personas - ${groupName}`, headers, rows)
 }
 
+// Generate import template for members
+export function generateMembersTemplate(groups) {
+  const wb = XLSX.utils.book_new()
+  const headers = [
+    'Nombre completo *',
+    'Nombre corto',
+    'Teléfono',
+    'Dirección',
+    'Fecha nacimiento (YYYY-MM-DD)',
+    'Fecha ingreso (YYYY-MM-DD)',
+    'Estado espiritual',
+    'Grupo',
+    'Invitado por',
+  ]
+  const groupNames = groups.map(g => g.name).join(', ') || 'Nombre del Grupo'
+  const sampleGroup = groups.length > 0 ? groups[0].name : 'Grupo Ejemplo'
+  const sample = [
+    'Juan Pérez García', 'Juancho', '50312345678', 'San Salvador',
+    '1995-03-15', '2024-01-10', 'Nuevo', sampleGroup, 'María López',
+  ]
+  const info = [
+    '← Campo obligatorio', '', '', '', 'Formato: YYYY-MM-DD', 'Formato: YYYY-MM-DD',
+    'Nuevo | En seguimiento | Consolidado | Miembro | Líder',
+    `Grupos disponibles: ${groupNames}`,
+    '',
+  ]
+  const ws = XLSX.utils.aoa_to_sheet([headers, sample, info])
+  ws['!cols'] = [
+    { wch: 25 }, { wch: 15 }, { wch: 15 }, { wch: 22 },
+    { wch: 26 }, { wch: 24 }, { wch: 22 }, { wch: 22 }, { wch: 20 },
+  ]
+  XLSX.utils.book_append_sheet(wb, ws, 'Plantilla')
+  XLSX.writeFile(wb, 'Plantilla_Miembros.xlsx')
+}
+
+// Normalize a date value coming from SheetJS to YYYY-MM-DD string.
+// Handles: JS Date objects (from Excel date cells), "DD/MM/YYYY" strings,
+// "YYYY-MM-DD" strings, and Excel serial numbers.
+function normalizeDate(raw) {
+  if (!raw && raw !== 0) return ''
+
+  // JS Date object (SheetJS returns these for formatted date cells)
+  if (raw instanceof Date) {
+    const y = raw.getFullYear()
+    const m = String(raw.getMonth() + 1).padStart(2, '0')
+    const d = String(raw.getDate()).padStart(2, '0')
+    return `${y}-${m}-${d}`
+  }
+
+  // Excel serial number (numeric)
+  if (typeof raw === 'number') {
+    const date = new Date(Math.round((raw - 25569) * 86400 * 1000))
+    const y = date.getUTCFullYear()
+    const m = String(date.getUTCMonth() + 1).padStart(2, '0')
+    const d = String(date.getUTCDate()).padStart(2, '0')
+    return `${y}-${m}-${d}`
+  }
+
+  const str = String(raw).trim()
+  if (!str) return ''
+
+  // DD/MM/YYYY or D/M/YYYY (Excel text format common in Latin America)
+  const dmyMatch = str.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/)
+  if (dmyMatch) {
+    const [, d, m, y] = dmyMatch
+    return `${y}-${m.padStart(2, '0')}-${d.padStart(2, '0')}`
+  }
+
+  // YYYY-MM-DD — already correct
+  if (/^\d{4}-\d{2}-\d{2}$/.test(str)) return str
+
+  return '' // unrecognized format → ignore
+}
+
+// Parse members from an imported Excel file
+export function parseMembersFromExcel(file, groups) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader()
+    reader.onload = (e) => {
+      try {
+        const wb = XLSX.read(e.target.result, { type: 'array', cellDates: true })
+        const ws = wb.Sheets[wb.SheetNames[0]]
+        const rows = XLSX.utils.sheet_to_json(ws, { header: 1, defval: '' })
+
+        const statusMap = {
+          'nuevo': 'new',
+          'en seguimiento': 'following',
+          'consolidado': 'consolidated',
+          'miembro': 'member',
+          'líder': 'leader',
+          'lider': 'leader',
+        }
+
+        const members = []
+        // Start at row 1 to skip headers; skip row 2 if it's the sample/info row
+        for (let i = 1; i < rows.length; i++) {
+          const row = rows[i]
+          const fullName = String(row[0] || '').trim()
+          if (!fullName || fullName === '← Campo obligatorio') continue
+
+          const rawStatus = String(row[6] || '').trim().toLowerCase()
+          const spiritualStatus = statusMap[rawStatus] || 'new'
+
+          const rawGroup = String(row[7] || '').trim().toLowerCase()
+          const group = groups.find(g => g.name.toLowerCase() === rawGroup)
+
+          members.push({
+            fullName,
+            shortName:      String(row[1] || '').trim(),
+            phone:          String(row[2] || '').trim(),
+            address:        String(row[3] || '').trim(),
+            birthDate:      normalizeDate(row[4]),
+            joinDate:       normalizeDate(row[5]),
+            spiritualStatus,
+            groupId:        group?.id || '',
+            referredBy:     String(row[8] || '').trim(),
+            active:         true,
+            createdAt:      new Date().toISOString(),
+          })
+        }
+        resolve(members)
+      } catch (err) {
+        reject(err)
+      }
+    }
+    reader.onerror = reject
+    reader.readAsArrayBuffer(file)
+  })
+}
+
 // Export attendees of a specific meeting
 export function exportMeetingAttendeesList(record, members, groupName = '') {
   const statusLabel = { present: 'Presente', absent: 'Ausente', late: 'Tardanza' }

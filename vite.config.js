@@ -9,9 +9,9 @@ export default defineConfig({
       registerType: 'autoUpdate',
       includeAssets: ['favicon.ico', 'apple-touch-icon.png'],
       manifest: {
-        name: 'Asistencia Juvenil',
+        name: 'Control de Asistencia CIC',
         short_name: 'Asistencia',
-        description: 'Control de asistencia para grupos juveniles',
+        description: 'Control de asistencia',
         theme_color: '#3b82f6',
         background_color: '#080c14',
         display: 'standalone',

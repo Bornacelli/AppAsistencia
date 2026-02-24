@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo } from 'react'
+import { useState, useEffect, useMemo, useRef } from 'react'
 import { collection, getDocs, doc, addDoc, updateDoc } from 'firebase/firestore'
 import { db } from '../firebase'
 import { useAuth } from '../context/AuthContext'
@@ -11,8 +11,9 @@ import Modal from '../components/ui/Modal'
 import { Inp, Sel, Textarea } from '../components/ui/Inp'
 import {
   MagnifyingGlass, Plus, Users, FunnelSimple, ArrowRight,
-  Phone, NotePencil, UserPlus
+  Phone, NotePencil, UserPlus, DownloadSimple, FileArrowUp, SpinnerGap
 } from '@phosphor-icons/react'
+import { generateMembersTemplate, parseMembersFromExcel } from '../utils/excel'
 import { todayStr, formatDateShort, localDateStr } from '../utils/dates'
 
 const SPIRITUAL_LABEL = {
@@ -87,6 +88,10 @@ export default function Members() {
   const [filterStatus, setFilterStatus] = useState('')
   const [filterActive, setFilterActive] = useState('true')
   const [showFilters,  setShowFilters]  = useState(false)
+
+  // Import
+  const fileInputRef = useRef(null)
+  const [importing, setImporting] = useState(false)
 
   // Visitor detail modal state
   const [selVisitor, setSelVisitor] = useState(null)
@@ -197,6 +202,30 @@ export default function Members() {
     navigate('/members/new', { state: { fromVisitor: selVisitor } })
   }
 
+  async function handleImport(e) {
+    const file = e.target.files?.[0]
+    if (!file) return
+    e.target.value = ''
+    setImporting(true)
+    try {
+      const members = await parseMembersFromExcel(file, groups)
+      if (members.length === 0) {
+        toastError('No se encontraron filas válidas en el archivo')
+        return
+      }
+      for (const member of members) {
+        await addDoc(collection(db, 'members'), member)
+      }
+      ok(`${members.length} persona${members.length !== 1 ? 's' : ''} importada${members.length !== 1 ? 's' : ''}`)
+      loadData()
+    } catch (err) {
+      console.error(err)
+      toastError('Error al leer el archivo')
+    } finally {
+      setImporting(false)
+    }
+  }
+
   const sevenDaysAgo = localDateStr(new Date(Date.now() - 7 * 24 * 60 * 60 * 1000))
   function followUpColor(visitor) {
     const notes = visitor.notes || []
@@ -244,6 +273,36 @@ export default function Members() {
           />
         </div>
       </div>
+
+      {/* Import actions — admin only */}
+      {isAdmin && (
+        <div className="px-4 pb-2 flex gap-2">
+          <input
+            ref={fileInputRef}
+            type="file"
+            accept=".xlsx,.xls"
+            className="hidden"
+            onChange={handleImport}
+          />
+          <button
+            onClick={() => generateMembersTemplate(groups)}
+            className="flex-1 h-9 flex items-center justify-center gap-1.5 rounded-[10px] text-xs font-bold press"
+            style={{ background: 'var(--surface)', border: '1px solid var(--border)', color: 'var(--text-2)' }}>
+            <DownloadSimple size={15} />
+            Descargar plantilla
+          </button>
+          <button
+            onClick={() => fileInputRef.current?.click()}
+            disabled={importing}
+            className="flex-1 h-9 flex items-center justify-center gap-1.5 rounded-[10px] text-xs font-bold press"
+            style={{ background: importing ? 'rgba(59,130,246,0.08)' : 'rgba(59,130,246,0.12)', border: '1px solid rgba(59,130,246,0.3)', color: 'var(--accent)' }}>
+            {importing
+              ? <SpinnerGap size={15} className="animate-spin" />
+              : <FileArrowUp size={15} />}
+            {importing ? 'Importando...' : 'Importar Excel'}
+          </button>
+        </div>
+      )}
 
       {/* Filters */}
       {showFilters && (

@@ -22,6 +22,7 @@ export function AuthProvider({ children }) {
             setUser(fbUser)
           } else {
             // Sesión activa pero sin perfil en Firestore → cerrar sesión automáticamente
+            localStorage.setItem('auth_error', 'no_profile')
             await signOut(auth)
             return
           }

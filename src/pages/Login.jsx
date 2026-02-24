@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { signInWithEmailAndPassword, sendPasswordResetEmail } from 'firebase/auth'
 import { auth } from '../firebase'
 import { useToast } from '../context/ToastContext'
@@ -12,6 +12,14 @@ export default function Login() {
   const [loading,  setLoading]  = useState(false)
   const [resetMode, setResetMode] = useState(false)
   const [fieldErrors, setFieldErrors] = useState({})
+
+  useEffect(() => {
+    const reason = localStorage.getItem('auth_error')
+    if (reason === 'no_profile') {
+      localStorage.removeItem('auth_error')
+      toastError('Esta cuenta no tiene acceso. Contacta al administrador.')
+    }
+  }, [])
 
   const handleLogin = async (e) => {
     e.preventDefault()
@@ -68,7 +76,7 @@ export default function Login() {
             {resetMode ? 'Recuperar acceso' : 'Bienvenido'}
           </h1>
           <p className="text-sm mt-1" style={{ color: 'var(--text-2)' }}>
-            {resetMode ? 'Te enviaremos un correo para restablecer tu contraseña' : 'Asistencia Juvenil'}
+            {resetMode ? 'Te enviaremos un correo para restablecer tu contraseña' : 'Asistencia CIC'}
           </p>
         </div>
       </div>
@@ -151,7 +159,7 @@ export default function Login() {
         </form>
 
         {/* Forgot password toggle */}
-        <div className="text-center mt-6">
+        {/*<div className="text-center mt-6">
           <button
             onClick={() => { setResetMode(!resetMode); setFieldErrors({}) }}
             className="text-sm font-semibold press"
@@ -159,7 +167,7 @@ export default function Login() {
           >
             {resetMode ? '← Volver al login' : '¿Olvidaste tu contraseña?'}
           </button>
-        </div>
+        </div>*/}
       </div>
     </div>
   )

@@ -10,7 +10,7 @@ export default defineConfig({
       includeAssets: ['favicon.png', 'apple-touch-icon.png'],
       manifest: {
         name: 'Control de Asistencia CIC',
-        short_name: 'Asistencia',
+        short_name: 'Asistencia CIC',
         description: 'Control de asistencia',
         theme_color: '#3b82f6',
         background_color: '#080c14',

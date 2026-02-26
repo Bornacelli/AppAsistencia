@@ -39,7 +39,9 @@ export default function BottomNav() {
   const navigate = useNavigate()
   const [moreOpen, setMoreOpen] = useState(false)
 
-  const isAdmin = profile?.role === 'admin'
+  const isSuperAdmin = profile?.role === 'super_admin'
+  const isAdmin      = profile?.role === 'admin' || isSuperAdmin
+  const isLeader     = profile?.role === 'leader'
 
   const handleSignOut = async () => {
     await signOut(auth)
@@ -95,9 +97,9 @@ export default function BottomNav() {
               <MoreItem icon={CalendarBlank} label="Reuniones"    to="/meetings"   onClose={() => setMoreOpen(false)} />
               <MoreItem icon={ChartBar}      label="Historial"    to="/history"    onClose={() => setMoreOpen(false)} />
               <MoreItem icon={Cake}          label="Cumpleaños"   to="/birthdays"  onClose={() => setMoreOpen(false)} />
-              {isAdmin && <MoreItem icon={UserCircle} label="Líderes"       to="/leaders"  onClose={() => setMoreOpen(false)} />}
-              {isAdmin && <MoreItem icon={ChartBar}   label="Reportes"      to="/reports"  onClose={() => setMoreOpen(false)} />}
-              {isAdmin && <MoreItem icon={Gear}        label="Configuración" to="/settings" onClose={() => setMoreOpen(false)} />}
+              {isAdmin            && <MoreItem icon={UserCircle} label="Líderes"       to="/leaders"  onClose={() => setMoreOpen(false)} />}
+              {(isAdmin || isLeader) && <MoreItem icon={ChartBar}   label="Reportes"      to="/reports"  onClose={() => setMoreOpen(false)} />}
+              {isAdmin            && <MoreItem icon={Gear}        label="Configuración" to="/settings" onClose={() => setMoreOpen(false)} />}
 
               <div className="my-2" style={{ borderTop: '1px solid var(--border)' }} />
 

@@ -15,7 +15,7 @@ export default function MemberForm() {
   const navigate = useNavigate()
   const location = useLocation()
   const { ok, error: toastError } = useToast()
-  const isAdmin = profile?.role === 'admin'
+  const isAdmin = profile?.role === 'admin' || profile?.role === 'super_admin'
 
   // Pre-fill from visitor conversion
   const fromVisitor = location.state?.fromVisitor

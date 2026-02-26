@@ -11,7 +11,7 @@ import { formatDateShort, todayStr, localDateStr } from '../utils/dates'
 
 export default function History() {
   const { profile } = useAuth()
-  const isAdmin = profile?.role === 'admin'
+  const isAdmin = profile?.role === 'admin' || profile?.role === 'super_admin'
 
   const [records,  setRecords]  = useState([])
   const [members,  setMembers]  = useState([])

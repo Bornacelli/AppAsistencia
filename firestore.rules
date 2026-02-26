@@ -10,15 +10,19 @@ service cloud.firestore {
       return get(/databases/$(database)/documents/leaders/$(request.auth.uid)).data;
     }
 
+    function isSuperAdmin() {
+      return isAuth() && getUserData().role == 'super_admin' && getUserData().active == true;
+    }
+
     function isAdmin() {
-      return isAuth() && getUserData().role == 'admin' && getUserData().active == true;
+      return isAuth() && (getUserData().role == 'admin' || getUserData().role == 'super_admin') && getUserData().active == true;
     }
 
     // Config: readable by anyone (used for setup detection without auth),
     // writable only by admins (or on first-time creation when no admin exists yet)
     match /config/{doc} {
       allow read: if true;
-      allow write: if isAdmin();
+      allow write: if isSuperAdmin();
       // Allow writing config when creating first admin (user is auth'd but may not have leaders doc yet)
       allow create: if isAuth();
     }

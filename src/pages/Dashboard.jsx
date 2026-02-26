@@ -73,7 +73,7 @@ export default function Dashboard() {
   const [alerts,     setAlerts]     = useState([])
   const [config,     setConfig]     = useState({})
 
-  const isAdmin = profile?.role === 'admin'
+  const isAdmin = profile?.role === 'admin' || profile?.role === 'super_admin'
   const today = new Date()
   const dateLabel = today.toLocaleDateString('es-ES', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })
 
@@ -306,7 +306,7 @@ export default function Dashboard() {
             <QuickAction icon={Users}        label="Personas"   to="/members" />
             <QuickAction icon={CalendarCheck} label="Reuniones" to="/meetings" />
             <QuickAction icon={ChartBar}     label="Historial"  to="/history" />
-            {isAdmin && <QuickAction icon={ChartBar} label="Reportes" to="/reports" />}
+            {(isAdmin || profile?.role === 'leader') && <QuickAction icon={ChartBar} label="Reportes" to="/reports" />}
           </div>
         </div>
       </div>

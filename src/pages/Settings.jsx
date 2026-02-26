@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react'
 import { doc, getDoc, setDoc, collection, getDocs, addDoc, updateDoc } from 'firebase/firestore'
 import { db } from '../firebase'
+import { useAuth } from '../context/AuthContext'
 import { useToast } from '../context/ToastContext'
 import LoadingSpinner from '../components/ui/LoadingSpinner'
 import Modal from '../components/ui/Modal'
@@ -8,7 +9,9 @@ import { Inp } from '../components/ui/Inp'
 import { Gear, Plus, PencilSimple, CheckSquare } from '@phosphor-icons/react'
 
 export default function Settings() {
+  const { profile } = useAuth()
   const { ok, error: toastError } = useToast()
+  const isSuperAdmin = profile?.role === 'super_admin'
 
   const [loading,  setLoading]  = useState(true)
   const [saving,   setSaving]   = useState(false)
@@ -110,8 +113,7 @@ export default function Settings() {
       </div>
 
       <div className="px-4 py-4 flex flex-col gap-6">
-        {/* General settings */}
-        <form onSubmit={saveConfig} className="flex flex-col gap-4">
+        <form onSubmit={saveConfig} className={`flex flex-col gap-4${!isSuperAdmin ? ' hidden' : ''}`}>
           <p className="text-[11px] font-bold uppercase tracking-widest" style={{ color: 'var(--text-2)' }}>General</p>
 
           <Inp

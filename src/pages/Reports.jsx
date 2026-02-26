@@ -1,6 +1,7 @@
 import { useState, useEffect, useMemo } from 'react'
 import { collection, getDocs } from 'firebase/firestore'
 import { db } from '../firebase'
+import { useAuth } from '../context/AuthContext'
 import LoadingSpinner from '../components/ui/LoadingSpinner'
 import EmptyState from '../components/ui/EmptyState'
 import {
@@ -13,6 +14,9 @@ import {
 import { localDateStr, todayStr, formatDateShort } from '../utils/dates'
 
 export default function Reports() {
+  const { profile } = useAuth()
+  const isLeader = profile?.role === 'leader'
+
   const [records,  setRecords]  = useState([])
   const [members,  setMembers]  = useState([])
   const [groups,   setGroups]   = useState([])
@@ -40,23 +44,33 @@ export default function Reports() {
       recs.sort((a, b) => (b.date || '').localeCompare(a.date || ''))
       setRecords(recs)
       setMembers(mSnap.docs.map(d => ({ id: d.id, ...d.data() })))
-      setGroups(gSnap.docs.map(d => ({ id: d.id, ...d.data() })))
+      const allGroups = gSnap.docs.map(d => ({ id: d.id, ...d.data() }))
+      // Leaders only see their assigned groups
+      const visibleGroups = profile?.role === 'leader'
+        ? allGroups.filter(g => (profile.groupIds || []).includes(g.id))
+        : allGroups
+      setGroups(visibleGroups)
     } catch (e) { console.error(e) }
     finally { setLoading(false) }
   }
 
   const filteredRecords = useMemo(() => {
+    const leaderGroupIds = isLeader ? (profile?.groupIds || []) : null
     return records.filter(r => {
-      const inGroup = !selGroup || r.groupId === selGroup
-      const inDate  = (!dateFrom || r.date >= dateFrom) && (!dateTo || r.date <= dateTo)
+      const inGroup = selGroup
+        ? r.groupId === selGroup
+        : leaderGroupIds ? leaderGroupIds.includes(r.groupId) : true
+      const inDate = (!dateFrom || r.date >= dateFrom) && (!dateTo || r.date <= dateTo)
       return inGroup && inDate
     })
-  }, [records, selGroup, dateFrom, dateTo])
+  }, [records, selGroup, dateFrom, dateTo, isLeader, profile])
 
   const filteredMembers = useMemo(() => {
-    if (!selGroup) return members
-    return members.filter(m => m.groupId === selGroup)
-  }, [members, selGroup])
+    const leaderGroupIds = isLeader ? (profile?.groupIds || []) : null
+    if (selGroup) return members.filter(m => m.groupId === selGroup)
+    if (leaderGroupIds) return members.filter(m => leaderGroupIds.includes(m.groupId))
+    return members
+  }, [members, selGroup, isLeader, profile])
 
   // Ranking report data
   const ranking = useMemo(() => {
@@ -102,12 +116,15 @@ export default function Reports() {
 
   // Data for the Listas tab
   const listGroupMembers = useMemo(() => {
+    const leaderGroupIds = isLeader ? (profile?.groupIds || []) : null
     const mems = listGroup
       ? members.filter(m => m.groupId === listGroup && m.active !== false)
-      : members.filter(m => m.active !== false)
+      : leaderGroupIds
+        ? members.filter(m => leaderGroupIds.includes(m.groupId) && m.active !== false)
+        : members.filter(m => m.active !== false)
     const grpMap = Object.fromEntries(groups.map(g => [g.id, g.name]))
     return mems.map(m => ({ ...m, _groupName: grpMap[m.groupId] || '' }))
-  }, [members, groups, listGroup])
+  }, [members, groups, listGroup, isLeader, profile])
 
   const selectedMeetingRecord = useMemo(() => {
     if (!listMeeting) return null
@@ -139,10 +156,11 @@ export default function Reports() {
       {/* Filters (for non-listas tabs) */}
       {activeTab !== 'listas' && (
         <div className="px-4 py-3 flex flex-col gap-2" style={{ borderBottom: '1px solid var(--border)' }}>
-          <select value={selGroup} onChange={e => setSelGroup(e.target.value)}
+          <select value={selGroup} onChange={e => !isLeader && setSelGroup(e.target.value)}
+            disabled={isLeader}
             className="w-full rounded-[10px] px-3 py-2.5 text-sm font-medium outline-none"
-            style={{ background: 'var(--surface)', border: '1px solid var(--border)', color: 'var(--text)', fontFamily: 'inherit' }}>
-            <option value="">Todos los grupos</option>
+            style={{ background: 'var(--surface)', border: '1px solid var(--border)', color: 'var(--text)', fontFamily: 'inherit', opacity: isLeader ? 0.7 : 1 }}>
+            {!isLeader && <option value="">Todos los grupos</option>}
             {groups.map(g => <option key={g.id} value={g.id}>{g.name}</option>)}
           </select>
           <div className="flex gap-2">
@@ -322,8 +340,8 @@ export default function Reports() {
             {/* Listas tab */}
             {activeTab === 'listas' && (
               <div className="flex flex-col gap-5">
-                {/* Section 1: All members */}
-                <div className="flex flex-col gap-3 p-4 rounded-[14px]"
+                {/* Section 1: All members — hidden for leaders */}
+                {!isLeader && <div className="flex flex-col gap-3 p-4 rounded-[14px]"
                   style={{ background: 'var(--surface)', border: '1px solid var(--border)' }}>
                   <div className="flex items-center gap-2">
                     <Users size={16} style={{ color: 'var(--accent)', flexShrink: 0 }} />
@@ -347,7 +365,7 @@ export default function Reports() {
                     style={{ background: 'rgba(59,130,246,0.12)', color: 'var(--accent)', border: '1px solid rgba(59,130,246,0.25)' }}>
                     <DownloadSimple size={16} /> Exportar todas las personas
                   </button>
-                </div>
+                </div>}
 
                 {/* Section 2: Members by group */}
                 <div className="flex flex-col gap-3 p-4 rounded-[14px]"
@@ -362,7 +380,7 @@ export default function Reports() {
                   <select value={listGroup} onChange={e => setListGroup(e.target.value)}
                     className="w-full rounded-[10px] px-3 py-2.5 text-sm font-medium outline-none"
                     style={{ background: 'var(--card)', border: '1px solid var(--border)', color: 'var(--text)', fontFamily: 'inherit' }}>
-                    <option value="">Selecciona un grupo</option>
+                    {!isLeader && <option value="">Selecciona un grupo</option>}
                     {groups.map(g => <option key={g.id} value={g.id}>{g.name}</option>)}
                   </select>
                   {listGroup && (
@@ -400,11 +418,13 @@ export default function Reports() {
                     className="w-full rounded-[10px] px-3 py-2.5 text-sm font-medium outline-none"
                     style={{ background: 'var(--card)', border: '1px solid var(--border)', color: 'var(--text)', fontFamily: 'inherit' }}>
                     <option value="">Selecciona una reunión</option>
-                    {records.map(r => {
-                      const grp = groups.find(g => g.id === r.groupId)
-                      const lbl = `${formatDateShort(r.date)}${grp ? ` — ${grp.name}` : ''}`
-                      return <option key={r.id} value={r.id}>{lbl}</option>
-                    })}
+                    {records
+                      .filter(r => !isLeader || (profile?.groupIds || []).includes(r.groupId))
+                      .map(r => {
+                        const grp = groups.find(g => g.id === r.groupId)
+                        const lbl = `${formatDateShort(r.date)}${grp ? ` — ${grp.name}` : ''}`
+                        return <option key={r.id} value={r.id}>{lbl}</option>
+                      })}
                   </select>
                   {selectedMeetingRecord && (
                     <div className="text-xs" style={{ color: 'var(--text-2)' }}>

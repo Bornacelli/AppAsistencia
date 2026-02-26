@@ -10,7 +10,7 @@ import { formatDateShort } from '../utils/dates'
 
 export default function Meetings() {
   const { profile } = useAuth()
-  const isAdmin = profile?.role === 'admin'
+  const isAdmin = profile?.role === 'admin' || profile?.role === 'super_admin'
 
   const [records,   setRecords]   = useState([])
   const [members,   setMembers]   = useState([])

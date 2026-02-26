@@ -25,7 +25,7 @@ function saveDismissed(map) {
 export default function Alerts() {
   const { profile } = useAuth()
   const navigate    = useNavigate()
-  const isAdmin = profile?.role === 'admin'
+  const isAdmin = profile?.role === 'admin' || profile?.role === 'super_admin'
 
   const [alerts,    setAlerts]    = useState([])
   const [dismissed, setDismissed] = useState(() => getDismissed())

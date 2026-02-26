@@ -16,7 +16,7 @@ export default function MemberProfile() {
   const { id }  = useParams()
   const { profile } = useAuth()
   const navigate    = useNavigate()
-  const isAdmin     = profile?.role === 'admin'
+  const isAdmin     = profile?.role === 'admin' || profile?.role === 'super_admin'
 
   const [member,  setMember]  = useState(null)
   const [history, setHistory] = useState([])

@@ -9,7 +9,7 @@ import { isBirthdayToday, formatBirthday, daysUntilBirthday, ageFrom } from '../
 
 export default function Birthdays() {
   const { profile } = useAuth()
-  const isAdmin = profile?.role === 'admin'
+  const isAdmin = profile?.role === 'admin' || profile?.role === 'super_admin'
 
   const [members, setMembers] = useState([])
   const [groups,  setGroups]  = useState([])

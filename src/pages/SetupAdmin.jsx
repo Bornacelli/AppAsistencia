@@ -37,7 +37,7 @@ export default function SetupAdmin() {
       await setDoc(doc(db, 'leaders', cred.user.uid), {
         name:      name.trim(),
         email:     email.trim().toLowerCase(),
-        role:      'admin',
+        role:      'super_admin',
         groupIds:  [],
         active:    true,
         createdAt: new Date().toISOString(),

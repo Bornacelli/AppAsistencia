@@ -16,7 +16,7 @@ export default function Attendance() {
   const { profile } = useAuth()
   const { ok, error: toastError } = useToast()
   const navigate = useNavigate()
-  const isAdmin = profile?.role === 'admin'
+  const isAdmin = profile?.role === 'admin' || profile?.role === 'super_admin'
 
   const [groups,       setGroups]       = useState([])
   const [selGroup,     setSelGroup]     = useState('')

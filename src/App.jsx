@@ -59,7 +59,7 @@ export default function App() {
           <ProtectedRoute><Visitors /></ProtectedRoute>
         } />
         <Route path="/leaders" element={
-          <ProtectedRoute roles={['admin']}><Leaders /></ProtectedRoute>
+          <ProtectedRoute roles={['super_admin', 'admin']}><Leaders /></ProtectedRoute>
         } />
         <Route path="/meetings" element={
           <ProtectedRoute><Meetings /></ProtectedRoute>
@@ -71,13 +71,13 @@ export default function App() {
           <ProtectedRoute><History /></ProtectedRoute>
         } />
         <Route path="/reports" element={
-          <ProtectedRoute roles={['admin']}><Reports /></ProtectedRoute>
+          <ProtectedRoute roles={['super_admin', 'admin', 'leader']}><Reports /></ProtectedRoute>
         } />
         <Route path="/alerts" element={
           <ProtectedRoute><Alerts /></ProtectedRoute>
         } />
         <Route path="/settings" element={
-          <ProtectedRoute roles={['admin']}><Settings /></ProtectedRoute>
+          <ProtectedRoute roles={['super_admin', 'admin']}><Settings /></ProtectedRoute>
         } />
 
         <Route path="*" element={<Navigate to="/" replace />} />

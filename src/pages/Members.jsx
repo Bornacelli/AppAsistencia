@@ -78,7 +78,7 @@ export default function Members() {
   const { profile } = useAuth()
   const navigate    = useNavigate()
   const { ok, error: toastError } = useToast()
-  const isAdmin = profile?.role === 'admin'
+  const isAdmin = profile?.role === 'admin' || profile?.role === 'super_admin'
 
   const [people,       setPeople]       = useState([])
   const [groups,       setGroups]       = useState([])

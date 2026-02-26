@@ -12,8 +12,8 @@ import { Inp, Sel } from '../components/ui/Inp'
 import { UserCircle, Plus, PencilSimple, ShieldCheck, User, Users } from '@phosphor-icons/react'
 import { todayStr } from '../utils/dates'
 
-const ROLE_LABEL = { admin: 'Administrador', leader: 'Líder', assistant: 'Asistente' }
-const ROLE_COLOR = { admin: '#a78bfa', leader: 'var(--accent)', assistant: 'var(--green)' }
+const ROLE_LABEL = { super_admin: 'Super Admin', admin: 'Administrador', leader: 'Líder', assistant: 'Asistente' }
+const ROLE_COLOR = { super_admin: '#f472b6', admin: '#a78bfa', leader: 'var(--accent)', assistant: 'var(--green)' }
 
 export default function Leaders() {
   const { profile } = useAuth()
@@ -40,7 +40,9 @@ export default function Leaders() {
         getDocs(collection(db, 'leaders')),
         getDocs(collection(db, 'groups')),
       ])
-      setLeaders(lSnap.docs.map(d => ({ id: d.id, ...d.data() })).sort((a, b) => (a.name || '').localeCompare(b.name || '', 'es')))
+      const allLeaders = lSnap.docs.map(d => ({ id: d.id, ...d.data() })).sort((a, b) => (a.name || '').localeCompare(b.name || '', 'es'))
+      // Admin can see all users except super_admin accounts
+      setLeaders(profile.role === 'super_admin' ? allLeaders : allLeaders.filter(u => u.role !== 'super_admin'))
       setGroups(gSnap.docs.map(d => ({ id: d.id, ...d.data() })).filter(g => g.active !== false))
     } catch (e) { console.error(e) }
     finally { setLoading(false) }
@@ -160,7 +162,7 @@ export default function Leaders() {
                   )}
                 </div>
               </div>
-              {u.id !== profile.uid && (
+              {u.id !== profile.uid && !(u.role === 'super_admin') && (
                 <button onClick={() => openEdit(u)}
                   className="w-9 h-9 flex items-center justify-center rounded-[10px] press"
                   style={{ background: 'var(--card)', border: '1px solid var(--border)', color: 'var(--text-2)' }}>
@@ -185,13 +187,13 @@ export default function Leaders() {
           )}
 
           <Sel label="Rol" value={form.role} onChange={e => setF('role', e.target.value)}>
-            <option value="admin">Administrador</option>
+            {profile.role === 'super_admin' && <option value="admin">Administrador</option>}
             <option value="leader">Líder</option>
             <option value="assistant">Asistente</option>
           </Sel>
 
-          {/* Group assignment */}
-          {groups.length > 0 && (
+          {/* Group assignment — only for leaders and assistants */}
+          {groups.length > 0 && !['admin', 'super_admin'].includes(form.role) && (
             <div>
               <p className="text-[11px] font-bold uppercase tracking-widest mb-2" style={{ color: 'var(--accent)' }}>
                 Grupos asignados

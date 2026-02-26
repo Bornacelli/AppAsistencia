@@ -19,6 +19,7 @@ import Alerts       from './pages/Alerts'
 import Settings     from './pages/Settings'
 import Meetings     from './pages/Meetings'
 import Birthdays    from './pages/Birthdays'
+import Absences     from './pages/Absences'
 
 export default function App() {
   const { loading, user, hasUsers } = useAuth()
@@ -66,6 +67,9 @@ export default function App() {
         } />
         <Route path="/birthdays" element={
           <ProtectedRoute><Birthdays /></ProtectedRoute>
+        } />
+        <Route path="/absences" element={
+          <ProtectedRoute><Absences /></ProtectedRoute>
         } />
         <Route path="/history" element={
           <ProtectedRoute><History /></ProtectedRoute>

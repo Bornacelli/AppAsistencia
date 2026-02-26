@@ -7,6 +7,7 @@ import LoadingSpinner from '../components/ui/LoadingSpinner'
 import EmptyState from '../components/ui/EmptyState'
 import { Bell, Cake, Warning, Handshake, WhatsappLogo, X, ArrowRight } from '@phosphor-icons/react'
 import { isBirthdaySoon, isBirthdayToday, ageFrom, formatBirthday, localDateStr, todayStr } from '../utils/dates'
+import { memberInAnyGroup } from '../utils/members'
 
 const DISMISSED_KEY = 'dismissed_alerts_v2'
 
@@ -39,6 +40,13 @@ export default function Alerts() {
     saveDismissed(next)
   }
 
+  function dismissAll(keys) {
+    const next = { ...dismissed }
+    keys.forEach(key => { next[key] = todayStr() })
+    setDismissed(next)
+    saveDismissed(next)
+  }
+
   async function loadAlerts() {
     setLoading(true)
     try {
@@ -52,7 +60,7 @@ export default function Alerts() {
       let members = mSnap.docs.map(d => ({ id: d.id, ...d.data() })).filter(m => m.active !== false)
       if (!isAdmin) {
         const gids = profile?.groupIds || []
-        members = members.filter(m => gids.includes(m.groupId))
+        members = members.filter(m => memberInAnyGroup(m, gids))
       }
 
       // Load attendance
@@ -100,7 +108,12 @@ export default function Alerts() {
       if (attDocs.length >= absenceWeeks) {
         const recentDates = attDocs.slice(0, absenceWeeks).map(d => d.date)
         members.forEach(m => {
-          const consecutive = recentDates.every(date => {
+          // Only check meetings that occurred on or after the member's joinDate
+          const eligibleDates = recentDates.filter(date => !m.joinDate || date >= m.joinDate)
+          // Need enough eligible meetings to trigger the alert
+          if (eligibleDates.length < absenceWeeks) return
+
+          const consecutive = eligibleDates.every(date => {
             const rec = attDocs.find(d => d.date === date)
             if (!rec) return true
             const st = rec.records?.[m.id]
@@ -188,14 +201,23 @@ export default function Alerts() {
           <EmptyState icon={Bell} title="Sin alertas activas" description="Todo está al día. ¡Buen trabajo!" />
         ) : (
           <>
-            {/* Birthday shortcut */}
-            <button onClick={() => navigate('/birthdays')}
-              className="flex items-center gap-3 px-4 py-3 rounded-[12px] press"
-              style={{ background: 'var(--amber-bg)', border: '1px solid var(--amber-bdr)' }}>
-              <Cake size={18} style={{ color: 'var(--amber)', flexShrink: 0 }} />
-              <span className="flex-1 text-sm font-semibold" style={{ color: 'var(--amber)' }}>Ver gestión de cumpleaños</span>
-              <ArrowRight size={16} style={{ color: 'var(--amber)' }} />
-            </button>
+            {/* Shortcuts */}
+            <div className="flex flex-col gap-2">
+              <button onClick={() => navigate('/birthdays')}
+                className="flex items-center gap-3 px-4 py-3 rounded-[12px] press"
+                style={{ background: 'var(--amber-bg)', border: '1px solid var(--amber-bdr)' }}>
+                <Cake size={18} style={{ color: 'var(--amber)', flexShrink: 0 }} />
+                <span className="flex-1 text-sm font-semibold" style={{ color: 'var(--amber)' }}>Ver gestión de cumpleaños</span>
+                <ArrowRight size={16} style={{ color: 'var(--amber)' }} />
+              </button>
+              <button onClick={() => navigate('/absences')}
+                className="flex items-center gap-3 px-4 py-3 rounded-[12px] press"
+                style={{ background: 'var(--red-bg)', border: '1px solid var(--red-bdr)' }}>
+                <Warning size={18} style={{ color: 'var(--red)', flexShrink: 0 }} />
+                <span className="flex-1 text-sm font-semibold" style={{ color: 'var(--red)' }}>Ver gestión de inasistencias</span>
+                <ArrowRight size={16} style={{ color: 'var(--red)' }} />
+              </button>
+            </div>
 
             {Object.entries(grouped).map(([type, items]) => {
               const cfg = typeConfig[type]
@@ -210,7 +232,7 @@ export default function Alerts() {
                       </p>
                     </div>
                     <button
-                      onClick={() => items.forEach(a => dismissAlert(a.alertKey))}
+                      onClick={() => dismissAll(items.map(a => a.alertKey))}
                       className="text-[10px] font-bold press"
                       style={{ color: 'var(--text-3)' }}>
                       Ignorar todas

@@ -65,18 +65,17 @@ export function exportToExcel(filename, sheetName, headers, rows, totals = null)
 
 // Export attendance report
 export function exportAttendanceReport(records, members, groupName, dateRange) {
-  const headers = ['Fecha', 'Total Miembros', 'Presentes', 'Ausentes', 'Tardanzas', '% Asistencia']
+  const headers = ['Fecha', 'Total Miembros', 'Presentes', 'Ausentes', '% Asistencia']
   const rows = records.map(r => {
-    const total    = members.length
-    const present  = Object.values(r.records || {}).filter(v => v === 'present').length
-    const absent   = Object.values(r.records || {}).filter(v => v === 'absent').length
-    const late     = Object.values(r.records || {}).filter(v => v === 'late').length
-    const pct      = total > 0 ? `${Math.round((present / total) * 100)}%` : '0%'
-    return [r.date, total, present, absent, late, pct]
+    const total   = members.length
+    const present = Object.values(r.records || {}).filter(v => v === 'present' || v === 'late').length
+    const absent  = Object.values(r.records || {}).filter(v => v === 'absent').length
+    const pct     = total > 0 ? `${Math.round((present / total) * 100)}%` : '0%'
+    return [r.date, total, present, absent, pct]
   })
 
-  const totals = ['TOTALES', members.length, '', '', '',
-    rows.length > 0 ? `${Math.round(rows.reduce((a, r) => a + parseInt(r[5]), 0) / rows.length)}%` : '0%'
+  const totals = ['TOTALES', members.length, '', '',
+    rows.length > 0 ? `${Math.round(rows.reduce((a, r) => a + parseInt(r[4]), 0) / rows.length)}%` : '0%'
   ]
 
   exportToExcel(`Asistencia_${groupName}_${dateRange}`, `Asistencia ${groupName}`, headers, rows, totals)
@@ -85,7 +84,7 @@ export function exportAttendanceReport(records, members, groupName, dateRange) {
 // Export member attendance history
 export function exportMemberHistory(member, records) {
   const headers = ['Fecha', 'Estado']
-  const statusLabel = { present: 'Presente', absent: 'Ausente', late: 'Tardanza' }
+  const statusLabel = { present: 'Presente', absent: 'Ausente', late: 'Presente' }
   const rows = records.map(r => [r.date, statusLabel[r.status] || 'Sin registro'])
   const present = rows.filter(r => r[1] === 'Presente').length
   const totals = [`Total: ${rows.length} reuniones`, `Asistió: ${present} (${rows.length > 0 ? Math.round((present / rows.length) * 100) : 0}%)`]
@@ -109,8 +108,8 @@ export function exportVisitorsReport(visitors) {
 
 // Export ranking
 export function exportRankingReport(ranking) {
-  const headers = ['#', 'Nombre', 'Total Reuniones', 'Presentes', 'Tardanzas', '% Asistencia']
-  const rows = ranking.map((r, i) => [i + 1, r.name, r.total, r.present, r.late, `${r.pct}%`])
+  const headers = ['#', 'Nombre', 'Total Reuniones', 'Presentes', '% Asistencia']
+  const rows = ranking.map((r, i) => [i + 1, r.name, r.total, r.present + (r.late || 0), `${r.pct}%`])
   exportToExcel('Ranking_Asistencia', 'Ranking', headers, rows)
 }
 
@@ -265,9 +264,8 @@ export function parseMembersFromExcel(file, groups) {
 
 // Export attendees of a specific meeting
 export function exportMeetingAttendeesList(record, members, groupName = '') {
-  const statusLabel = { present: 'Presente', absent: 'Ausente', late: 'Tardanza' }
+  const statusLabel = { present: 'Presente', absent: 'Ausente', late: 'Presente' }
   const recs = record.records || {}
-  // Get all member ids that appear in the record
   const allIds = new Set([
     ...members.map(m => m.id),
     ...Object.keys(recs),
@@ -283,10 +281,8 @@ export function exportMeetingAttendeesList(record, members, groupName = '') {
       member?.phone || '',
     ])
   })
-  // Sort: present first, then late, then absent
-  const order = { present: 0, late: 1, absent: 2 }
-  rows.sort((a, b) => (order[a[1] === 'Presente' ? 'present' : a[1] === 'Tardanza' ? 'late' : 'absent'] || 0) -
-    (order[b[1] === 'Presente' ? 'present' : b[1] === 'Tardanza' ? 'late' : 'absent'] || 0))
+  // Sort: present first, then absent
+  rows.sort((a, b) => (a[1] === 'Presente' ? 0 : 1) - (b[1] === 'Presente' ? 0 : 1))
   const label = groupName ? `${groupName}_${record.date}` : record.date
   exportToExcel(`Asistentes_${label}`, `Reunión ${record.date}`, headers, rows)
 }

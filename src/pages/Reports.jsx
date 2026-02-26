@@ -12,6 +12,8 @@ import {
   exportRankingReport, exportMembersList, exportMeetingAttendeesList
 } from '../utils/excel'
 import { localDateStr, todayStr, formatDateShort } from '../utils/dates'
+import { memberInGroup, memberInAnyGroup } from '../utils/members'
+import { usePersistedState } from '../hooks/usePersistedState'
 
 export default function Reports() {
   const { profile } = useAuth()
@@ -21,13 +23,13 @@ export default function Reports() {
   const [members,  setMembers]  = useState([])
   const [groups,   setGroups]   = useState([])
   const [loading,  setLoading]  = useState(true)
-  const [selGroup, setSelGroup] = useState('')
-  const [dateFrom, setDateFrom] = useState(localDateStr(new Date(Date.now() - 30 * 24 * 60 * 60 * 1000)))
-  const [dateTo,   setDateTo]   = useState(todayStr())
-  const [activeTab, setActiveTab] = useState('summary')
+  const [selGroup,  setSelGroup]  = usePersistedState('rep_group', '')
+  const [dateFrom,  setDateFrom]  = useState(localDateStr(new Date(Date.now() - 30 * 24 * 60 * 60 * 1000)))
+  const [dateTo,    setDateTo]    = useState(todayStr())
+  const [activeTab, setActiveTab] = usePersistedState('rep_tab', 'summary')
 
   // Listas tab state
-  const [listGroup,   setListGroup]   = useState('')
+  const [listGroup,   setListGroup]   = usePersistedState('rep_list_group', '')
   const [listMeeting, setListMeeting] = useState('')
 
   useEffect(() => { loadData() }, [])
@@ -67,8 +69,8 @@ export default function Reports() {
 
   const filteredMembers = useMemo(() => {
     const leaderGroupIds = isLeader ? (profile?.groupIds || []) : null
-    if (selGroup) return members.filter(m => m.groupId === selGroup)
-    if (leaderGroupIds) return members.filter(m => leaderGroupIds.includes(m.groupId))
+    if (selGroup) return members.filter(m => memberInGroup(m, selGroup))
+    if (leaderGroupIds) return members.filter(m => memberInAnyGroup(m, leaderGroupIds))
     return members
   }, [members, selGroup, isLeader, profile])
 
@@ -118,9 +120,9 @@ export default function Reports() {
   const listGroupMembers = useMemo(() => {
     const leaderGroupIds = isLeader ? (profile?.groupIds || []) : null
     const mems = listGroup
-      ? members.filter(m => m.groupId === listGroup && m.active !== false)
+      ? members.filter(m => memberInGroup(m, listGroup) && m.active !== false)
       : leaderGroupIds
-        ? members.filter(m => leaderGroupIds.includes(m.groupId) && m.active !== false)
+        ? members.filter(m => memberInAnyGroup(m, leaderGroupIds) && m.active !== false)
         : members.filter(m => m.active !== false)
     const grpMap = Object.fromEntries(groups.map(g => [g.id, g.name]))
     return mems.map(m => ({ ...m, _groupName: grpMap[m.groupId] || '' }))
@@ -134,7 +136,7 @@ export default function Reports() {
   const selectedMeetingMembers = useMemo(() => {
     if (!selectedMeetingRecord) return []
     return selectedMeetingRecord.groupId
-      ? members.filter(m => m.groupId === selectedMeetingRecord.groupId)
+      ? members.filter(m => memberInGroup(m, selectedMeetingRecord.groupId))
       : members
   }, [selectedMeetingRecord, members])
 
@@ -428,8 +430,7 @@ export default function Reports() {
                   </select>
                   {selectedMeetingRecord && (
                     <div className="text-xs" style={{ color: 'var(--text-2)' }}>
-                      {Object.values(selectedMeetingRecord.records || {}).filter(v => v === 'present').length} presentes ·{' '}
-                      {Object.values(selectedMeetingRecord.records || {}).filter(v => v === 'late').length} tardanzas ·{' '}
+                      {Object.values(selectedMeetingRecord.records || {}).filter(v => v === 'present' || v === 'late').length} presentes ·{' '}
                       {Object.values(selectedMeetingRecord.records || {}).filter(v => v === 'absent').length} ausentes
                     </div>
                   )}

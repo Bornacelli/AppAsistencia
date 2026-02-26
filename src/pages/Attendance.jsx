@@ -1,4 +1,5 @@
 import { useState, useEffect, useMemo, useRef } from 'react'
+import { usePersistedState } from '../hooks/usePersistedState'
 import { collection, getDocs, doc, getDoc, setDoc, addDoc, updateDoc, query, where } from 'firebase/firestore'
 import { db } from '../firebase'
 import { useAuth } from '../context/AuthContext'
@@ -19,7 +20,7 @@ export default function Attendance() {
   const isAdmin = profile?.role === 'admin' || profile?.role === 'super_admin'
 
   const [groups,       setGroups]       = useState([])
-  const [selGroup,     setSelGroup]     = useState('')
+  const [selGroup,     setSelGroup]     = usePersistedState('att_group', '')
   const [selDate,      setSelDate]      = useState(todayStr())
   const [members,      setMembers]      = useState([])       // current group members
   const [extraMembers, setExtraMembers] = useState([])       // cross-group members already in this attendance
@@ -74,6 +75,11 @@ export default function Attendance() {
           return mGroupIds.includes(selGroup)
         })
       } else if (!isAdmin) groupMems = all.filter(m => !m.groupId && (!m.groupIds || m.groupIds.length === 0))
+
+      // For past dates, only show members who had already joined by that date
+      if (selDate < todayStr()) {
+        groupMems = groupMems.filter(m => !m.joinDate || m.joinDate <= selDate)
+      }
       setMembers(groupMems)
 
       // Load existing attendance
@@ -88,19 +94,31 @@ export default function Attendance() {
       }
 
       // Auto-mark absent for past dates (members with no record)
+      // Skip members whose joinDate is after the meeting date (they weren't in the group yet)
       const isPast = selDate < todayStr()
       if (isPast) {
         groupMems.forEach(m => {
-          if (!(m.id in initAtt)) initAtt[m.id] = 'absent'
+          if (!(m.id in initAtt) && (!m.joinDate || m.joinDate <= selDate)) {
+            initAtt[m.id] = 'absent'
+          }
+        })
+        // Remove any records for members who hadn't joined yet (leftover from old data)
+        Object.keys(initAtt).forEach(memberId => {
+          const member = all.find(m => m.id === memberId)
+          if (member && member.joinDate && member.joinDate > selDate) {
+            delete initAtt[memberId]
+          }
         })
       }
       setAttendance(initAtt)
 
       // Extra members: from other groups already in this attendance record
+      // For past dates, exclude members who hadn't joined yet
       const recordedIds = Object.keys(initAtt)
       const extra = all.filter(m =>
         !groupMems.some(gm => gm.id === m.id) &&
-        recordedIds.includes(m.id)
+        recordedIds.includes(m.id) &&
+        (!isPast || !m.joinDate || m.joinDate <= selDate)
       )
       setExtraMembers(extra)
     } catch (e) {
@@ -259,8 +277,9 @@ export default function Attendance() {
           background: 'var(--surface)',
           border: `1px solid ${st === 'present' ? 'rgba(34,197,94,0.3)' : st === 'absent' ? 'rgba(239,68,68,0.25)' : 'var(--border)'}`,
         }}>
+        <button onClick={() => navigate(`/members/${m.id}`)} className="flex items-center gap-3 flex-1 min-w-0 text-left">
         <Avatar name={m.fullName} size={40} status={st} />
-        <div className="flex-1 min-w-0">
+        <div className="min-w-0">
           <p className="text-sm font-bold truncate" style={{ color: 'var(--text)' }}>{m.fullName}</p>
           <div className="flex items-center gap-1.5 flex-wrap mt-0.5">
             {m.spiritualStatus === 'new' && (
@@ -285,6 +304,7 @@ export default function Attendance() {
             )}
           </div>
         </div>
+        </button>
         {/* Present / Absent only (no tardanza) */}
         <div className="flex gap-1.5 flex-shrink-0">
           <button onClick={() => mark(m.id, 'present')}

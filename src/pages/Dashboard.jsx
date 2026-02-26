@@ -10,6 +10,7 @@ import {
   UserCircleMinus
 } from '@phosphor-icons/react'
 import { todayStr, formatDate, isBirthdaySoon, isBirthdayToday, localDateStr } from '../utils/dates'
+import { memberInAnyGroup } from '../utils/members'
 
 function StatTile({ icon: Icon, value, label, color = 'blue', to }) {
   const navigate = useNavigate()
@@ -70,6 +71,7 @@ export default function Dashboard() {
   const [loading,    setLoading]    = useState(true)
   const [stats,      setStats]      = useState({ totalMembers: 0, totalSessions: 0, lastPresent: 0, lastTotal: 0 })
   const [recentRecs, setRecentRecs] = useState([])
+  const [members,    setMembers]    = useState([])
   const [alerts,     setAlerts]     = useState([])
   const [config,     setConfig]     = useState({})
 
@@ -96,7 +98,8 @@ export default function Dashboard() {
       let membersQ = query(collection(db, 'members'), where('active', '==', true))
       const membersSnap = await getDocs(membersQ)
       const allMembers = membersSnap.docs.map(d => ({ id: d.id, ...d.data() }))
-      const members = userGroupIds ? allMembers.filter(m => userGroupIds.includes(m.groupId)) : allMembers
+      const members = userGroupIds ? allMembers.filter(m => memberInAnyGroup(m, userGroupIds)) : allMembers
+      setMembers(members)
 
       // Recent attendance (all docs, filter by groupId in JS to avoid compound index)
       const attSnap = await getDocs(collection(db, 'attendance'))
@@ -110,7 +113,7 @@ export default function Dashboard() {
 
       const last = recent[0]
       const lastPresent = last ? Object.values(last.records || {}).filter(v => v === 'present').length : 0
-      const lastTotal   = last ? members.length : 0
+      const lastTotal   = last ? members.filter(m => !m.joinDate || m.joinDate <= last.date).length : 0
 
       setStats({ totalMembers: members.length, totalSessions: attDocs.length, lastPresent, lastTotal })
 
@@ -134,13 +137,17 @@ export default function Dashboard() {
       if (attDocs.length >= absenceWeeks) {
         const lastNDates = attDocs.slice(0, absenceWeeks).map(d => d.date)
         members.forEach(m => {
-          const consecutiveAbsent = lastNDates.every(date => {
+          // Only check meetings that occurred on or after the member's joinDate
+          const eligibleDates = lastNDates.filter(date => !m.joinDate || date >= m.joinDate)
+          if (eligibleDates.length < absenceWeeks) return
+
+          const consecutiveAbsent = eligibleDates.every(date => {
             const rec = attDocs.find(d => d.date === date)
             if (!rec) return true
             const status = rec.records?.[m.id]
             return !status || status === 'absent'
           })
-          if (consecutiveAbsent && lastNDates.length >= absenceWeeks) {
+          if (consecutiveAbsent) {
             alertList.push({
               type: 'absence',
               label: `${m.shortName || m.fullName.split(' ')[0]} ausente ${absenceWeeks} semanas seguidas`,
@@ -235,22 +242,18 @@ export default function Dashboard() {
             </p>
             <div className="flex flex-col gap-2">
               {alerts.slice(0, 3).map((a, i) => {
-                const Icon = a.type === 'birthday' ? Cake : a.type === 'absence' ? Warning : Handshake
+                const Icon  = a.type === 'birthday' ? Cake : a.type === 'absence' ? Warning : Handshake
                 const color = a.type === 'birthday' ? 'var(--amber)' : a.type === 'absence' ? 'var(--red)' : 'var(--accent)'
                 const bg    = a.type === 'birthday' ? 'var(--amber-bg)' : a.type === 'absence' ? 'var(--red-bg)' : 'rgba(59,130,246,0.08)'
+                const dest  = a.type === 'birthday' ? '/birthdays' : a.type === 'absence' ? '/absences' : '/alerts'
                 return (
-                  <div key={i} className="flex items-center gap-3 px-4 py-3 rounded-[12px]"
+                  <button key={i} onClick={() => navigate(dest)}
+                    className="flex items-center gap-3 px-4 py-3 rounded-[12px] w-full text-left press"
                     style={{ background: bg, border: `1px solid ${color}33` }}>
                     <Icon size={16} style={{ color, flexShrink: 0 }} />
                     <span className="text-xs font-semibold flex-1" style={{ color }}>{a.label}</span>
-                    {a.type === 'birthday' && a.phone && (
-                      <a href={`https://wa.me/${a.phone.replace(/\D/g, '')}`} target="_blank" rel="noreferrer"
-                        className="text-xs font-bold px-2 py-1 rounded-[6px]"
-                        style={{ background: 'var(--green-bg)', color: 'var(--green)', border: '1px solid var(--green-bdr)' }}>
-                        WhatsApp
-                      </a>
-                    )}
-                  </div>
+                    <ArrowRight size={14} style={{ color, flexShrink: 0, opacity: 0.6 }} />
+                  </button>
                 )
               })}
               {alerts.length > 3 && (
@@ -273,7 +276,8 @@ export default function Dashboard() {
             </div>
             <div className="rounded-[var(--r)] overflow-hidden" style={{ background: 'var(--surface)', border: '1px solid var(--border)' }}>
               {recentRecs.slice(0, 5).map((r, i) => {
-                const total   = stats.totalMembers
+                const eligible = members.filter(m => !m.joinDate || m.joinDate <= r.date)
+                const total   = eligible.length || Object.keys(r.records || {}).length
                 const present = Object.values(r.records || {}).filter(v => v === 'present').length
                 const pct     = total > 0 ? Math.round((present / total) * 100) : 0
                 const color   = pct >= 70 ? 'var(--green)' : pct >= 40 ? 'var(--amber)' : 'var(--red)'

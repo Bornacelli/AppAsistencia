@@ -1,4 +1,5 @@
 import { useState, useEffect, useMemo } from 'react'
+import { usePersistedState } from '../hooks/usePersistedState'
 import { collection, getDocs, query, where } from 'firebase/firestore'
 import { db } from '../firebase'
 import { useAuth } from '../context/AuthContext'
@@ -8,6 +9,7 @@ import TopBar from '../components/layout/TopBar'
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, Cell } from 'recharts'
 import { CalendarBlank } from '@phosphor-icons/react'
 import { formatDateShort, todayStr, localDateStr } from '../utils/dates'
+import { memberInAnyGroup, memberInGroup } from '../utils/members'
 
 export default function History() {
   const { profile } = useAuth()
@@ -17,7 +19,7 @@ export default function History() {
   const [members,  setMembers]  = useState([])
   const [groups,   setGroups]   = useState([])
   const [loading,  setLoading]  = useState(true)
-  const [selGroup, setSelGroup] = useState('')
+  const [selGroup, setSelGroup] = usePersistedState('hist_group', '')
   const [dateFrom, setDateFrom] = useState(localDateStr(new Date(Date.now() - 60 * 24 * 60 * 60 * 1000)))
   const [dateTo,   setDateTo]   = useState(todayStr())
 
@@ -38,7 +40,7 @@ export default function History() {
       if (!isAdmin) {
         const gids = profile?.groupIds || []
         recs = recs.filter(r => gids.includes(r.groupId))
-        mems = mems.filter(m => gids.includes(m.groupId))
+        mems = mems.filter(m => memberInAnyGroup(m, gids))
         setGroups(grps.filter(g => gids.includes(g.id)))
       } else {
         setGroups(grps)
@@ -62,13 +64,18 @@ export default function History() {
   // Get members for selected group
   const groupMembers = useMemo(() => {
     if (!selGroup) return members
-    return members.filter(m => m.groupId === selGroup)
+    return members.filter(m => memberInGroup(m, selGroup))
   }, [members, selGroup])
 
   // Chart data (last 8 records)
   const chartData = useMemo(() => {
     return filtered.slice(0, 8).reverse().map(r => {
-      const total   = groupMembers.length || Object.keys(r.records || {}).length
+      const recordedIds = Object.keys(r.records || {})
+      const eligibleRecorded = recordedIds.filter(id => {
+        const m = groupMembers.find(mm => mm.id === id)
+        return !m?.joinDate || m.joinDate <= r.date
+      })
+      const total   = eligibleRecorded.length || groupMembers.filter(m => !m.joinDate || m.joinDate <= r.date).length
       const present = Object.values(r.records || {}).filter(v => v === 'present').length
       const pct     = total > 0 ? Math.round((present / total) * 100) : 0
       const d = new Date((r.date || '') + 'T12:00:00')
@@ -153,7 +160,12 @@ export default function History() {
                   {filtered.length} registro{filtered.length !== 1 ? 's' : ''}
                 </p>
                 {filtered.map(r => {
-                  const total   = groupMembers.length || Object.keys(r.records || {}).length
+                  const recordedIds = Object.keys(r.records || {})
+                  const eligibleRecorded = recordedIds.filter(id => {
+                    const m = groupMembers.find(mm => mm.id === id)
+                    return !m?.joinDate || m.joinDate <= r.date
+                  })
+                  const total   = eligibleRecorded.length || groupMembers.filter(m => !m.joinDate || m.joinDate <= r.date).length
                   const present = Object.values(r.records || {}).filter(v => v === 'present').length
                   const late    = Object.values(r.records || {}).filter(v => v === 'late').length
                   const pct     = total > 0 ? Math.round(((present + late) / total) * 100) : 0

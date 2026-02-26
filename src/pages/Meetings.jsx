@@ -1,12 +1,14 @@
 import { useState, useEffect, useMemo } from 'react'
+import { usePersistedState } from '../hooks/usePersistedState'
 import { collection, getDocs } from 'firebase/firestore'
 import { db } from '../firebase'
 import { useAuth } from '../context/AuthContext'
 import LoadingSpinner from '../components/ui/LoadingSpinner'
 import EmptyState from '../components/ui/EmptyState'
 import Modal from '../components/ui/Modal'
-import { CalendarBlank, CheckCircle, XCircle, Clock } from '@phosphor-icons/react'
+import { CalendarBlank, CheckCircle, XCircle } from '@phosphor-icons/react'
 import { formatDateShort } from '../utils/dates'
+import { memberInAnyGroup, memberInGroup } from '../utils/members'
 
 export default function Meetings() {
   const { profile } = useAuth()
@@ -16,7 +18,7 @@ export default function Meetings() {
   const [members,   setMembers]   = useState([])
   const [groups,    setGroups]    = useState([])
   const [loading,   setLoading]   = useState(true)
-  const [selGroup,  setSelGroup]  = useState('')
+  const [selGroup,  setSelGroup]  = usePersistedState('meet_group', '')
   const [selRecord, setSelRecord] = useState(null)
 
   useEffect(() => { loadData() }, [profile])
@@ -36,7 +38,7 @@ export default function Meetings() {
       if (!isAdmin) {
         const gids = profile?.groupIds || []
         recs = recs.filter(r => gids.includes(r.groupId))
-        mems = mems.filter(m => gids.includes(m.groupId))
+        mems = mems.filter(m => memberInAnyGroup(m, gids))
       }
 
       recs.sort((a, b) => (b.date || '').localeCompare(a.date || ''))
@@ -53,7 +55,7 @@ export default function Meetings() {
   }, [records, selGroup])
 
   const groupMembersFor = (groupId) =>
-    groupId ? members.filter(m => m.groupId === groupId) : members
+    groupId ? members.filter(m => memberInGroup(m, groupId)) : members
 
   const groupName = (id) => groups.find(g => g.id === id)?.name || 'General'
 
@@ -88,7 +90,14 @@ export default function Meetings() {
             </p>
             {filtered.map(r => {
               const grpMems = groupMembersFor(r.groupId)
-              const total   = grpMems.length || Object.keys(r.records || {}).length
+              // Use recorded IDs filtered by joinDate as source of truth for total
+              // This avoids counting members added to the group after this meeting
+              const recordedIds = Object.keys(r.records || {})
+              const eligibleRecorded = recordedIds.filter(id => {
+                const m = members.find(mm => mm.id === id)
+                return !m?.joinDate || m.joinDate <= r.date
+              })
+              const total   = eligibleRecorded.length || grpMems.filter(m => !m.joinDate || m.joinDate <= r.date).length
               const present = Object.values(r.records || {}).filter(v => v === 'present').length
               const late    = Object.values(r.records || {}).filter(v => v === 'late').length
               const pct     = total > 0 ? Math.round(((present + late) / total) * 100) : 0
@@ -130,13 +139,16 @@ export default function Meetings() {
 
 function MeetingDetail({ record, members, groupName, allMembers, onClose }) {
   const recs = record.records || {}
-  const entries = Object.entries(recs)
-  const presentIds = entries.filter(([, v]) => v === 'present').map(([k]) => k)
-  const lateIds    = entries.filter(([, v]) => v === 'late').map(([k]) => k)
-  const absentIds  = entries.filter(([, v]) => v === 'absent').map(([k]) => k)
+  // Only consider records for members who had joined by this meeting's date
+  const eligibleEntries = Object.entries(recs).filter(([id]) => {
+    const m = allMembers.find(mm => mm.id === id)
+    return !m?.joinDate || m.joinDate <= record.date
+  })
+  const presentIds = eligibleEntries.filter(([, v]) => v === 'present' || v === 'late').map(([k]) => k)
+  const absentIds  = eligibleEntries.filter(([, v]) => v === 'absent').map(([k]) => k)
 
-  const totalAttended = presentIds.length + lateIds.length
-  const total = members.length || entries.length
+  const totalAttended = presentIds.length
+  const total = eligibleEntries.length || members.filter(m => !m.joinDate || m.joinDate <= record.date).length
   const pct   = total > 0 ? Math.round((totalAttended / total) * 100) : 0
   const color = pct >= 70 ? 'var(--green)' : pct >= 40 ? 'var(--amber)' : 'var(--red)'
 
@@ -168,10 +180,9 @@ function MeetingDetail({ record, members, groupName, allMembers, onClose }) {
     <Modal open onClose={onClose} title={formatDateShort(record.date)}>
       <div className="flex flex-col gap-4">
         {/* Stats grid */}
-        <div className="grid grid-cols-3 gap-2">
+        <div className="grid grid-cols-2 gap-2">
           {[
             { label: 'Presentes', value: presentIds.length, color: 'var(--green)' },
-            { label: 'Tardanzas', value: lateIds.length,    color: 'var(--amber)' },
             { label: 'Ausentes',  value: absentIds.length,  color: 'var(--red)' },
           ].map(s => (
             <div key={s.label} className="flex flex-col items-center gap-1 p-3 rounded-[10px]"
@@ -188,7 +199,6 @@ function MeetingDetail({ record, members, groupName, allMembers, onClose }) {
         </div>
 
         <Section title="Presentes" ids={presentIds} icon={CheckCircle} colorVal="var(--green)" />
-        <Section title="Tardanzas" ids={lateIds}    icon={Clock}        colorVal="var(--amber)" />
         <Section title="Ausentes"  ids={absentIds}  icon={XCircle}      colorVal="var(--red)" />
       </div>
     </Modal>

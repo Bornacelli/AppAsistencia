@@ -6,7 +6,9 @@ import { useNavigate, useParams, useLocation } from 'react-router-dom'
 import { useToast } from '../context/ToastContext'
 import TopBar from '../components/layout/TopBar'
 import { Inp, Sel } from '../components/ui/Inp'
+import { Check } from '@phosphor-icons/react'
 import { todayStr } from '../utils/dates'
+import { getMemberGroupIds } from '../utils/members'
 
 export default function MemberForm() {
   const { id } = useParams()
@@ -32,13 +34,22 @@ export default function MemberForm() {
     phone:           fromVisitor?.phone || '',
     address:         '',
     joinDate:        todayStr(),
-    spiritualStatus: fromVisitor ? 'new' : 'new',
-    groupId:         fromVisitor?.groupId || profile?.groupIds?.[0] || '',
+    spiritualStatus: 'new',
+    groupIds:        fromVisitor?.groupId ? [fromVisitor.groupId] : (profile?.groupIds || []),
     referredBy:      fromVisitor?.referredBy || '',
     active:          true,
   })
 
   function set(key, val) { setForm(f => ({ ...f, [key]: val })) }
+
+  function toggleGroup(gid) {
+    setForm(f => ({
+      ...f,
+      groupIds: f.groupIds.includes(gid)
+        ? f.groupIds.filter(id => id !== gid)
+        : [...f.groupIds, gid],
+    }))
+  }
 
   useEffect(() => {
     loadGroups()
@@ -67,7 +78,7 @@ export default function MemberForm() {
           address:         d.address         || '',
           joinDate:        d.joinDate        || '',
           spiritualStatus: d.spiritualStatus || 'new',
-          groupId:         d.groupId         || '',
+          groupIds:        getMemberGroupIds(d),
           referredBy:      d.referredBy      || '',
           active:          d.active !== false,
         })
@@ -96,7 +107,8 @@ export default function MemberForm() {
         address:         form.address.trim() || null,
         joinDate:        form.joinDate || null,
         spiritualStatus: form.spiritualStatus,
-        groupId:         form.groupId || null,
+        groupIds:        form.groupIds,
+        groupId:         form.groupIds[0] || null, // backward compat
         referredBy:      form.referredBy.trim() || null,
         active:          form.active,
         updatedAt:       new Date().toISOString(),
@@ -106,7 +118,7 @@ export default function MemberForm() {
         ok('Miembro actualizado')
       } else {
         data.createdAt = new Date().toISOString()
-        const ref = await addDoc(collection(db, 'members'), data)
+        await addDoc(collection(db, 'members'), data)
         ok('Miembro agregado')
       }
       navigate(-1)
@@ -146,10 +158,33 @@ export default function MemberForm() {
         </Sel>
 
         {groups.length > 0 && (
-          <Sel label="Grupo" value={form.groupId} onChange={e => set('groupId', e.target.value)}>
-            <option value="">Sin grupo</option>
-            {groups.map(g => <option key={g.id} value={g.id}>{g.name}</option>)}
-          </Sel>
+          <div>
+            <p className="text-xs font-bold uppercase tracking-widest mb-2" style={{ color: 'var(--text-2)' }}>
+              Grupos {form.groupIds.length > 0 && `(${form.groupIds.length} seleccionado${form.groupIds.length !== 1 ? 's' : ''})`}
+            </p>
+            <div className="flex flex-col gap-2">
+              {groups.map(g => {
+                const checked = form.groupIds.includes(g.id)
+                return (
+                  <button type="button" key={g.id} onClick={() => toggleGroup(g.id)}
+                    className="flex items-center gap-3 px-4 py-3 rounded-[12px] text-left press"
+                    style={{
+                      background: checked ? 'rgba(59,130,246,0.08)' : 'var(--surface)',
+                      border: `1px solid ${checked ? 'rgba(59,130,246,0.35)' : 'var(--border)'}`,
+                    }}>
+                    <div className="w-5 h-5 rounded-[6px] flex items-center justify-center flex-shrink-0 transition-colors"
+                      style={{
+                        background: checked ? 'var(--accent)' : 'var(--card)',
+                        border: `1.5px solid ${checked ? 'var(--accent)' : 'var(--border)'}`,
+                      }}>
+                      {checked && <Check size={11} weight="bold" style={{ color: 'white' }} />}
+                    </div>
+                    <span className="flex-1 text-sm font-semibold" style={{ color: 'var(--text)' }}>{g.name}</span>
+                  </button>
+                )
+              })}
+            </div>
+          </div>
         )}
 
         {isEdit && (

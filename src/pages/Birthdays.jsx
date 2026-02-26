@@ -1,4 +1,5 @@
 import { useState, useEffect, useMemo } from 'react'
+import { usePersistedState } from '../hooks/usePersistedState'
 import { collection, getDocs } from 'firebase/firestore'
 import { db } from '../firebase'
 import { useAuth } from '../context/AuthContext'
@@ -6,6 +7,7 @@ import LoadingSpinner from '../components/ui/LoadingSpinner'
 import EmptyState from '../components/ui/EmptyState'
 import { Cake, WhatsappLogo } from '@phosphor-icons/react'
 import { isBirthdayToday, formatBirthday, daysUntilBirthday, ageFrom } from '../utils/dates'
+import { memberInAnyGroup, memberInGroup } from '../utils/members'
 
 export default function Birthdays() {
   const { profile } = useAuth()
@@ -14,7 +16,7 @@ export default function Birthdays() {
   const [members, setMembers] = useState([])
   const [groups,  setGroups]  = useState([])
   const [loading, setLoading] = useState(true)
-  const [selGroup, setSelGroup] = useState('')
+  const [selGroup, setSelGroup] = usePersistedState('bday_group', '')
 
   useEffect(() => { loadData() }, [profile])
 
@@ -28,7 +30,7 @@ export default function Birthdays() {
       let mems = mSnap.docs.map(d => ({ id: d.id, ...d.data() })).filter(m => m.active !== false && m.birthDate)
       if (!isAdmin) {
         const gids = profile?.groupIds || []
-        mems = mems.filter(m => gids.includes(m.groupId))
+        mems = mems.filter(m => memberInAnyGroup(m, gids))
       }
       setMembers(mems)
       setGroups(gSnap.docs.map(d => ({ id: d.id, ...d.data() })))
@@ -37,7 +39,7 @@ export default function Birthdays() {
   }
 
   const sorted = useMemo(() => {
-    let mems = selGroup ? members.filter(m => m.groupId === selGroup) : members
+    let mems = selGroup ? members.filter(m => memberInGroup(m, selGroup)) : members
     return mems
       .map(m => ({
         ...m,

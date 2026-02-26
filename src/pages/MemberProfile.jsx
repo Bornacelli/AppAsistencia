@@ -6,7 +6,7 @@ import { useAuth } from '../context/AuthContext'
 import TopBar from '../components/layout/TopBar'
 import Avatar from '../components/ui/Avatar'
 import LoadingSpinner from '../components/ui/LoadingSpinner'
-import { PencilSimple, Phone, MapPin, Calendar, CheckCircle, XCircle, Clock, MinusCircle, Handshake } from '@phosphor-icons/react'
+import { PencilSimple, Phone, MapPin, Calendar, CheckCircle, XCircle, MinusCircle, Handshake } from '@phosphor-icons/react'
 import { formatDate, ageFrom } from '../utils/dates'
 
 const SPIRITUAL_LABEL = { new: 'Nuevo', following: 'En seguimiento', consolidated: 'Consolidado', member: 'Miembro', leader: 'Líder' }
@@ -45,12 +45,13 @@ export default function MemberProfile() {
       attSnap.docs.forEach(d => {
         const data = d.data()
         const status = data.records?.[id]
-        if (status !== undefined) {
+        // Exclude records from before this member's joinDate
+        if (status !== undefined && (!m.joinDate || data.date >= m.joinDate)) {
           hist.push({ date: data.date, status, groupId: data.groupId })
         }
       })
       hist.sort((a, b) => (b.date || '').localeCompare(a.date || ''))
-      setHistory(hist.slice(0, 20))
+      setHistory(hist)
     } catch (e) { console.error(e) }
     finally { setLoading(false) }
   }
@@ -67,8 +68,8 @@ export default function MemberProfile() {
   const late    = history.filter(h => h.status === 'late').length
   const pct     = history.length > 0 ? Math.round(((present + late) / history.length) * 100) : 0
   const pctColor = pct >= 70 ? 'var(--green)' : pct >= 40 ? 'var(--amber)' : 'var(--red)'
-  const statusIcon = { present: CheckCircle, absent: XCircle, late: Clock }
-  const statusColor = { present: 'var(--green)', absent: 'var(--red)', late: 'var(--amber)' }
+  const statusIcon = { present: CheckCircle, absent: XCircle, late: CheckCircle }
+  const statusColor = { present: 'var(--green)', absent: 'var(--red)', late: 'var(--green)' }
 
   return (
     <div className="flex flex-col" style={{ background: 'var(--bg)', minHeight: '100%' }}>
@@ -149,25 +150,57 @@ export default function MemberProfile() {
             <p className="text-[11px] font-bold uppercase tracking-widest mb-2" style={{ color: 'var(--text-2)' }}>
               Historial de asistencia
             </p>
+
+            {/* Visual mini-timeline — last 16 meetings as dots */}
+            <div className="flex items-center gap-1.5 flex-wrap px-4 py-3 rounded-[var(--r)] mb-3"
+              style={{ background: 'var(--surface)', border: '1px solid var(--border)' }}>
+              <span className="text-[10px] font-bold uppercase tracking-widest w-full mb-1" style={{ color: 'var(--text-3)' }}>
+                Últimas {Math.min(history.length, 16)} reuniones
+              </span>
+              {history.slice(0, 16).reverse().map((h, i) => {
+                const bg = h.status === 'absent' ? 'var(--red)' : 'var(--green)'
+                const title = h.status === 'absent' ? 'Ausente' : 'Presente'
+                return (
+                  <div key={i} title={`${h.date} — ${title}`}
+                    className="w-4 h-4 rounded-full flex-shrink-0"
+                    style={{ background: bg }} />
+                )
+              })}
+              <div className="flex items-center gap-3 w-full mt-2 pt-2" style={{ borderTop: '1px solid var(--border)' }}>
+                {[['var(--green)', 'Presente'], ['var(--red)', 'Ausente']].map(([color, label]) => (
+                  <div key={label} className="flex items-center gap-1">
+                    <div className="w-2.5 h-2.5 rounded-full" style={{ background: color }} />
+                    <span className="text-[10px]" style={{ color: 'var(--text-3)' }}>{label}</span>
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            {/* Detail list — last 20 */}
             <div className="rounded-[var(--r)] overflow-hidden" style={{ background: 'var(--surface)', border: '1px solid var(--border)' }}>
-              {history.map((h, i) => {
+              {history.slice(0, 20).map((h, i) => {
                 const Icon = statusIcon[h.status] || MinusCircle
                 const color = statusColor[h.status] || 'var(--text-3)'
                 const d = new Date(h.date + 'T12:00:00')
                 const label = d.toLocaleDateString('es-ES', { weekday: 'short', day: 'numeric', month: 'short' })
                 return (
                   <div key={h.date} className="flex items-center gap-3 px-4 py-3"
-                    style={{ borderBottom: i < history.length - 1 ? '1px solid var(--border)' : 'none' }}>
+                    style={{ borderBottom: i < Math.min(history.length, 20) - 1 ? '1px solid var(--border)' : 'none' }}>
                     <Icon size={18} style={{ color, flexShrink: 0 }} />
                     <span className="flex-1 text-sm font-semibold" style={{ color: 'var(--text)' }}>
                       {label.charAt(0).toUpperCase() + label.slice(1)}
                     </span>
                     <span className="text-xs font-bold" style={{ color }}>
-                      {{ present: 'Presente', absent: 'Ausente', late: 'Tardanza' }[h.status] || h.status}
+                      {h.status === 'absent' ? 'Ausente' : 'Presente'}
                     </span>
                   </div>
                 )
               })}
+              {history.length > 20 && (
+                <div className="px-4 py-2.5 text-center text-xs font-semibold" style={{ color: 'var(--text-3)', borderTop: '1px solid var(--border)' }}>
+                  +{history.length - 20} reuniones más en el historial completo
+                </div>
+              )}
             </div>
           </div>
         )}

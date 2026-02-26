@@ -1,4 +1,4 @@
-import { House, ClipboardText, Users, Bell, DotsThreeOutline, ChartBar, Gear, UserCircle, CalendarBlank, Cake } from '@phosphor-icons/react'
+import { House, ClipboardText, Users, Bell, DotsThreeOutline, ChartBar, Gear, UserCircle, CalendarBlank, Cake, Warning } from '@phosphor-icons/react'
 import { NavLink, useNavigate } from 'react-router-dom'
 import { useState } from 'react'
 import { signOut } from 'firebase/auth'
@@ -96,7 +96,8 @@ export default function BottomNav() {
             <div className="flex flex-col gap-1">
               <MoreItem icon={CalendarBlank} label="Reuniones"    to="/meetings"   onClose={() => setMoreOpen(false)} />
               <MoreItem icon={ChartBar}      label="Historial"    to="/history"    onClose={() => setMoreOpen(false)} />
-              <MoreItem icon={Cake}          label="Cumpleaños"   to="/birthdays"  onClose={() => setMoreOpen(false)} />
+              <MoreItem icon={Cake}          label="Cumpleaños"    to="/birthdays"  onClose={() => setMoreOpen(false)} />
+              <MoreItem icon={Warning}       label="Inasistencias" to="/absences"   onClose={() => setMoreOpen(false)} />
               {isAdmin            && <MoreItem icon={UserCircle} label="Líderes"       to="/leaders"  onClose={() => setMoreOpen(false)} />}
               {(isAdmin || isLeader) && <MoreItem icon={ChartBar}   label="Reportes"      to="/reports"  onClose={() => setMoreOpen(false)} />}
               {isAdmin            && <MoreItem icon={Gear}        label="Configuración" to="/settings" onClose={() => setMoreOpen(false)} />}

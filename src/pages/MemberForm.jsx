@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef, useMemo } from 'react'
 import { collection, getDocs, doc, getDoc, addDoc, updateDoc } from 'firebase/firestore'
 import { db } from '../firebase'
 import { useAuth } from '../context/AuthContext'
@@ -6,9 +6,118 @@ import { useNavigate, useParams, useLocation } from 'react-router-dom'
 import { useToast } from '../context/ToastContext'
 import TopBar from '../components/layout/TopBar'
 import { Inp, Sel } from '../components/ui/Inp'
-import { Check } from '@phosphor-icons/react'
+import { Check, X } from '@phosphor-icons/react'
 import { todayStr } from '../utils/dates'
 import { getMemberGroupIds } from '../utils/members'
+
+// Combobox para seleccionar el miembro que invitó
+function MemberCombobox({ label, members, selectedId, legacyText, onSelect, excludeId }) {
+  const [query, setQuery]   = useState('')
+  const [open, setOpen]     = useState(false)
+  const containerRef        = useRef(null)
+
+  const selectedMember = members.find(m => m.id === selectedId) || null
+
+  const filtered = useMemo(() => {
+    if (!query.trim()) return []
+    const q = query.toLowerCase()
+    return members
+      .filter(m => m.id !== excludeId && (
+        m.fullName.toLowerCase().includes(q) ||
+        (m.shortName || '').toLowerCase().includes(q)
+      ))
+      .slice(0, 8)
+  }, [query, members, excludeId])
+
+  useEffect(() => {
+    function onClickOutside(e) {
+      if (containerRef.current && !containerRef.current.contains(e.target)) {
+        setOpen(false)
+        setQuery('')
+      }
+    }
+    document.addEventListener('mousedown', onClickOutside)
+    return () => document.removeEventListener('mousedown', onClickOutside)
+  }, [])
+
+  function handleSelect(member) {
+    onSelect(member.id, member.fullName)
+    setQuery('')
+    setOpen(false)
+  }
+
+  return (
+    <div ref={containerRef} className="relative">
+      <p className="text-xs font-bold uppercase tracking-widest mb-1.5"
+        style={{ color: 'var(--text-2)' }}>{label}</p>
+
+      {selectedMember ? (
+        // Miembro seleccionado — mostrar nombre con botón para limpiar
+        <div className="flex items-center gap-2 px-3 py-2.5 rounded-[10px]"
+          style={{ background: 'var(--surface)', border: '1px solid var(--border)' }}>
+          <span className="flex-1 text-sm font-medium" style={{ color: 'var(--text)' }}>
+            {selectedMember.fullName}
+            {selectedMember.shortName && (
+              <span className="ml-1.5 text-xs" style={{ color: 'var(--text-2)' }}>
+                ({selectedMember.shortName})
+              </span>
+            )}
+          </span>
+          <button type="button" onClick={() => onSelect(null, null)}
+            className="w-5 h-5 rounded-full flex items-center justify-center flex-shrink-0"
+            style={{ background: 'var(--text-3)' }}>
+            <X size={10} weight="bold" color="white" />
+          </button>
+        </div>
+      ) : (
+        // Sin selección — mostrar buscador
+        <div className="relative">
+          <input
+            type="text"
+            value={query}
+            onChange={e => { setQuery(e.target.value); setOpen(true) }}
+            onFocus={() => setOpen(true)}
+            placeholder="Buscar por nombre..."
+            className="w-full px-3 py-2.5 text-sm font-medium rounded-[10px] outline-none"
+            style={{ background: 'var(--surface)', border: '1px solid var(--border)', color: 'var(--text)', fontFamily: 'inherit' }}
+          />
+
+          {open && query.trim() && (
+            <div className="absolute top-full left-0 right-0 mt-1 rounded-[12px] overflow-hidden z-50"
+              style={{ background: 'var(--surface)', border: '1px solid var(--border)', boxShadow: '0 8px 24px rgba(0,0,0,0.4)' }}>
+              {filtered.length > 0 ? filtered.map((m, i) => (
+                <button
+                  key={m.id}
+                  type="button"
+                  onMouseDown={e => e.preventDefault()}
+                  onClick={() => handleSelect(m)}
+                  className="w-full text-left px-4 py-3 text-sm font-medium press"
+                  style={{
+                    color: 'var(--text)',
+                    borderBottom: i < filtered.length - 1 ? '1px solid var(--border)' : 'none',
+                  }}>
+                  {m.fullName}
+                  {m.shortName && (
+                    <span className="ml-1.5 text-xs" style={{ color: 'var(--text-2)' }}>({m.shortName})</span>
+                  )}
+                </button>
+              )) : (
+                <p className="px-4 py-3 text-sm" style={{ color: 'var(--text-2)' }}>Sin resultados</p>
+              )}
+            </div>
+          )}
+
+          {/* Valor legacy (texto libre guardado antes de esta mejora) */}
+          {legacyText && !query && (
+            <p className="mt-1.5 text-xs" style={{ color: 'var(--text-3)' }}>
+              Valor anterior: <span style={{ color: 'var(--text-2)' }}>{legacyText}</span> — busca y selecciona para actualizar
+            </p>
+          )}
+        </div>
+      )}
+    </div>
+  )
+}
 
 export default function MemberForm() {
   const { id } = useParams()
@@ -19,10 +128,10 @@ export default function MemberForm() {
   const { ok, error: toastError } = useToast()
   const isAdmin = profile?.role === 'admin' || profile?.role === 'super_admin'
 
-  // Pre-fill from visitor conversion
   const fromVisitor = location.state?.fromVisitor
 
   const [groups,  setGroups]  = useState([])
+  const [members, setMembers] = useState([])
   const [loading, setLoading] = useState(isEdit)
   const [saving,  setSaving]  = useState(false)
   const [errors,  setErrors]  = useState({})
@@ -36,23 +145,33 @@ export default function MemberForm() {
     joinDate:        todayStr(),
     spiritualStatus: 'new',
     groupIds:        fromVisitor?.groupId ? [fromVisitor.groupId] : (profile?.groupIds || []),
-    referredBy:      fromVisitor?.referredBy || '',
+    referredById:    '',   // ID del miembro que lo invitó
+    referredBy:      fromVisitor?.referredBy || '',  // nombre (legado y compatibilidad)
     active:          true,
   })
 
   function set(key, val) { setForm(f => ({ ...f, [key]: val })) }
 
+  function setReferredBy(memberId, memberName) {
+    setForm(f => ({
+      ...f,
+      referredById: memberId || '',
+      referredBy:   memberName || '',
+    }))
+  }
+
   function toggleGroup(gid) {
     setForm(f => ({
       ...f,
       groupIds: f.groupIds.includes(gid)
-        ? f.groupIds.filter(id => id !== gid)
+        ? f.groupIds.filter(i => i !== gid)
         : [...f.groupIds, gid],
     }))
   }
 
   useEffect(() => {
     loadGroups()
+    loadMembers()
     if (isEdit) loadMember()
   }, [])
 
@@ -62,6 +181,17 @@ export default function MemberForm() {
       let grps = snap.docs.map(d => ({ id: d.id, ...d.data() })).filter(g => g.active !== false)
       if (!isAdmin) grps = grps.filter(g => (profile?.groupIds || []).includes(g.id))
       setGroups(grps)
+    } catch {}
+  }
+
+  async function loadMembers() {
+    try {
+      const snap = await getDocs(collection(db, 'members'))
+      const active = snap.docs
+        .map(d => ({ id: d.id, ...d.data() }))
+        .filter(m => m.active !== false)
+        .sort((a, b) => (a.fullName || '').localeCompare(b.fullName || ''))
+      setMembers(active)
     } catch {}
   }
 
@@ -79,6 +209,7 @@ export default function MemberForm() {
           joinDate:        d.joinDate        || '',
           spiritualStatus: d.spiritualStatus || 'new',
           groupIds:        getMemberGroupIds(d),
+          referredById:    d.referredById    || '',
           referredBy:      d.referredBy      || '',
           active:          d.active !== false,
         })
@@ -108,7 +239,8 @@ export default function MemberForm() {
         joinDate:        form.joinDate || null,
         spiritualStatus: form.spiritualStatus,
         groupIds:        form.groupIds,
-        groupId:         form.groupIds[0] || null, // backward compat
+        groupId:         form.groupIds[0] || null,
+        referredById:    form.referredById || null,
         referredBy:      form.referredBy.trim() || null,
         active:          form.active,
         updatedAt:       new Date().toISOString(),
@@ -147,7 +279,15 @@ export default function MemberForm() {
         <Inp label="WhatsApp" type="tel" value={form.phone} onChange={e => set('phone', e.target.value)} placeholder="+57 300 000 0000" />
         <Inp label="Dirección" value={form.address} onChange={e => set('address', e.target.value)} placeholder="Barrio, ciudad" />
         <Inp label="Fecha de ingreso" type="date" value={form.joinDate} onChange={e => set('joinDate', e.target.value)} style={{ colorScheme: 'dark' }} />
-        <Inp label="Invitado por" value={form.referredBy} onChange={e => set('referredBy', e.target.value)} placeholder="Nombre de quien lo invitó (opcional)" />
+
+        <MemberCombobox
+          label="Invitado por"
+          members={members}
+          selectedId={form.referredById}
+          legacyText={!form.referredById && form.referredBy ? form.referredBy : ''}
+          onSelect={setReferredBy}
+          excludeId={id}
+        />
 
         <Sel label="Estado espiritual" value={form.spiritualStatus} onChange={e => set('spiritualStatus', e.target.value)}>
           <option value="new">Nuevo</option>

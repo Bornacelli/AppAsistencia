@@ -20,8 +20,8 @@ export default function History() {
   const [groups,   setGroups]   = useState([])
   const [loading,  setLoading]  = useState(true)
   const [selGroup, setSelGroup] = usePersistedState('hist_group', '')
-  const [dateFrom, setDateFrom] = useState(localDateStr(new Date(Date.now() - 60 * 24 * 60 * 60 * 1000)))
-  const [dateTo,   setDateTo]   = useState(todayStr())
+  const [dateFrom, setDateFrom] = usePersistedState('hist_from', localDateStr(new Date(Date.now() - 60 * 24 * 60 * 60 * 1000)))
+  const [dateTo,   setDateTo]   = usePersistedState('hist_to',   todayStr())
 
   useEffect(() => { loadData() }, [profile])
 

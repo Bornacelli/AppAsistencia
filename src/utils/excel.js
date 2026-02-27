@@ -67,9 +67,10 @@ export function exportToExcel(filename, sheetName, headers, rows, totals = null)
 export function exportAttendanceReport(records, members, groupName, dateRange) {
   const headers = ['Fecha', 'Total Miembros', 'Presentes', 'Ausentes', '% Asistencia']
   const rows = records.map(r => {
-    const total   = members.length
-    const present = Object.values(r.records || {}).filter(v => v === 'present' || v === 'late').length
-    const absent  = Object.values(r.records || {}).filter(v => v === 'absent').length
+    const eligibleIds = new Set(members.filter(m => !m.joinDate || m.joinDate <= r.date).map(m => m.id))
+    const total   = eligibleIds.size
+    const present = Object.entries(r.records || {}).filter(([id, v]) => eligibleIds.has(id) && (v === 'present' || v === 'late')).length
+    const absent  = Object.entries(r.records || {}).filter(([id, v]) => eligibleIds.has(id) && v === 'absent').length
     const pct     = total > 0 ? `${Math.round((present / total) * 100)}%` : '0%'
     return [r.date, total, present, absent, pct]
   })
@@ -111,6 +112,18 @@ export function exportRankingReport(ranking) {
   const headers = ['#', 'Nombre', 'Total Reuniones', 'Presentes', '% Asistencia']
   const rows = ranking.map((r, i) => [i + 1, r.name, r.total, r.present + (r.late || 0), `${r.pct}%`])
   exportToExcel('Ranking_Asistencia', 'Ranking', headers, rows)
+}
+
+// Export invitation ranking
+export function exportInvitationRanking(ranking, groupName = 'Todos') {
+  const headers = ['#', 'Nombre', 'Personas invitadas', 'Quiénes']
+  const rows = ranking.map((r, i) => [
+    i + 1,
+    r.name,
+    r.count,
+    r.invited.map(m => m.fullName).join(', '),
+  ])
+  exportToExcel(`Ranking_Invitaciones_${groupName}`, 'Invitaciones', headers, rows)
 }
 
 // Export detailed member list for a group (or all)
@@ -263,25 +276,38 @@ export function parseMembersFromExcel(file, groups) {
 }
 
 // Export attendees of a specific meeting
-export function exportMeetingAttendeesList(record, members, groupName = '') {
+// groupMembers: members of the meeting's group
+// allMembers:   all members (with _groupName) for looking up externals
+export function exportMeetingAttendeesList(record, groupMembers, allMembers, groupName = '') {
   const statusLabel = { present: 'Presente', absent: 'Ausente', late: 'Presente' }
   const recs = record.records || {}
-  const allIds = new Set([
-    ...members.map(m => m.id),
-    ...Object.keys(recs),
-  ])
+
+  // 1. Miembros del grupo que ya habían ingresado en la fecha de la reunión
+  const eligible       = groupMembers.filter(m => !m.joinDate || m.joinDate <= record.date)
+  const eligibleIds    = new Set(eligible.map(m => m.id))
+  // Todos los IDs del grupo (incluyendo los que ingresaron después de la reunión)
+  const groupMemberIds = new Set(groupMembers.map(m => m.id))
+
   const headers = ['Nombre', 'Estado', 'Teléfono']
   const rows = []
-  allIds.forEach(id => {
-    const member = members.find(m => m.id === id)
-    const status = recs[id] || 'absent'
-    rows.push([
-      member?.fullName || 'Persona externa',
-      statusLabel[status] || status,
-      member?.phone || '',
-    ])
+
+  // Fila por cada miembro elegible (solo nombre, sin grupo)
+  eligible.forEach(m => {
+    const status = recs[m.id] || 'absent'
+    rows.push([m.fullName, statusLabel[status] || status, m.phone || ''])
   })
-  // Sort: present first, then absent
+
+  // 2. Externos: aparecen en recs pero NO son miembros del grupo
+  // Se omiten los miembros del grupo cuya fecha de ingreso es posterior a la reunión
+  Object.keys(recs).forEach(id => {
+    if (eligibleIds.has(id)) return          // ya incluido arriba
+    if (groupMemberIds.has(id)) return       // miembro del grupo pero ingresó después de esta reunión
+    const member = allMembers.find(m => m.id === id)
+    if (!member) return                       // ID desconocido
+    const status = recs[id]
+    rows.push([`${member.fullName} (${member._groupName})`, statusLabel[status] || status, member.phone || ''])
+  })
+
   rows.sort((a, b) => (a[1] === 'Presente' ? 0 : 1) - (b[1] === 'Presente' ? 0 : 1))
   const label = groupName ? `${groupName}_${record.date}` : record.date
   exportToExcel(`Asistentes_${label}`, `Reunión ${record.date}`, headers, rows)

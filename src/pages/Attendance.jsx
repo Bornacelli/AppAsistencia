@@ -21,7 +21,7 @@ export default function Attendance() {
 
   const [groups,       setGroups]       = useState([])
   const [selGroup,     setSelGroup]     = usePersistedState('att_group', '')
-  const [selDate,      setSelDate]      = useState(todayStr())
+  const [selDate,      setSelDate]      = usePersistedState('att_date', todayStr())
   const [members,      setMembers]      = useState([])       // current group members
   const [extraMembers, setExtraMembers] = useState([])       // cross-group members already in this attendance
   const [allMembers,   setAllMembers]   = useState([])       // ALL members across groups

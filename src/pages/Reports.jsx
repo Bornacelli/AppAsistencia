@@ -5,11 +5,11 @@ import { useAuth } from '../context/AuthContext'
 import LoadingSpinner from '../components/ui/LoadingSpinner'
 import EmptyState from '../components/ui/EmptyState'
 import {
-  DownloadSimple, ChartBar, Users, Trophy, Star, ListBullets
+  DownloadSimple, ChartBar, Users, Trophy, Star, ListBullets, HandHeart, CaretDown, CaretUp
 } from '@phosphor-icons/react'
 import {
   exportAttendanceReport,
-  exportRankingReport, exportMembersList, exportMeetingAttendeesList
+  exportRankingReport, exportMembersList, exportMeetingAttendeesList, exportInvitationRanking
 } from '../utils/excel'
 import { localDateStr, todayStr, formatDateShort } from '../utils/dates'
 import { memberInGroup, memberInAnyGroup } from '../utils/members'
@@ -24,9 +24,10 @@ export default function Reports() {
   const [groups,   setGroups]   = useState([])
   const [loading,  setLoading]  = useState(true)
   const [selGroup,  setSelGroup]  = usePersistedState('rep_group', '')
-  const [dateFrom,  setDateFrom]  = useState(localDateStr(new Date(Date.now() - 30 * 24 * 60 * 60 * 1000)))
-  const [dateTo,    setDateTo]    = useState(todayStr())
+  const [dateFrom,  setDateFrom]  = usePersistedState('rep_from', localDateStr(new Date(Date.now() - 30 * 24 * 60 * 60 * 1000)))
+  const [dateTo,    setDateTo]    = usePersistedState('rep_to',   todayStr())
   const [activeTab, setActiveTab] = usePersistedState('rep_tab', 'summary')
+  const [expandedInviters, setExpandedInviters] = useState(new Set())
 
   // Listas tab state
   const [listGroup,   setListGroup]   = usePersistedState('rep_list_group', '')
@@ -79,6 +80,7 @@ export default function Reports() {
     return filteredMembers.map(m => {
       let present = 0, late = 0, total = 0
       filteredRecords.forEach(r => {
+        if (m.joinDate && r.date < m.joinDate) return  // no contar reuniones antes del ingreso
         const st = r.records?.[m.id]
         if (st !== undefined) {
           total++
@@ -94,9 +96,10 @@ export default function Reports() {
   // Summary
   const summary = useMemo(() => {
     if (!filteredRecords.length) return null
-    const last = filteredRecords[0]
-    const total   = filteredMembers.length
-    const present = Object.values(last.records || {}).filter(v => v === 'present').length
+    const last       = filteredRecords[0]
+    const eligibleIds = new Set(filteredMembers.filter(m => !m.joinDate || m.joinDate <= last.date).map(m => m.id))
+    const total   = eligibleIds.size
+    const present = Object.entries(last.records || {}).filter(([id, v]) => eligibleIds.has(id) && v === 'present').length
     const pct     = total > 0 ? Math.round((present / total) * 100) : 0
     return { date: last.date, total, present, pct }
   }, [filteredRecords, filteredMembers])
@@ -115,6 +118,29 @@ export default function Reports() {
       .map(m => ({ ...m, _groupName: grpMap[m.groupId] || '', _attendCount: filteredRecords.filter(r => r.records?.[m.id] === 'present').length }))
       .sort((a, b) => b._attendCount - a._attendCount)
   }, [filteredRecords, filteredMembers, groups])
+
+  // Invitation ranking
+  const invitationRanking = useMemo(() => {
+    const counts = {}
+    filteredMembers.forEach(m => {
+      if (!m.referredById) return
+      if (dateFrom && m.joinDate && m.joinDate < dateFrom) return
+      if (dateTo   && m.joinDate && m.joinDate > dateTo)   return
+      if (!counts[m.referredById]) counts[m.referredById] = []
+      counts[m.referredById].push(m)
+    })
+    return Object.entries(counts)
+      .map(([inviterId, invited]) => {
+        const inviter = members.find(m => m.id === inviterId)
+        return {
+          id:      inviterId,
+          name:    inviter?.fullName || '—',
+          count:   invited.length,
+          invited: invited.sort((a, b) => (a.fullName || '').localeCompare(b.fullName || '')),
+        }
+      })
+      .sort((a, b) => b.count - a.count)
+  }, [filteredMembers, members, dateFrom, dateTo])
 
   // Data for the Listas tab
   const listGroupMembers = useMemo(() => {
@@ -142,11 +168,20 @@ export default function Reports() {
 
   const groupName = groups.find(g => g.id === selGroup)?.name || 'Todos'
   const tabs = [
-    { id: 'summary', label: 'Resumen' },
-    { id: 'ranking', label: 'Ranking' },
-    { id: 'nuevos',  label: 'Nuevos' },
-    { id: 'listas',  label: 'Listas' },
+    { id: 'summary',      label: 'Resumen' },
+    { id: 'ranking',      label: 'Ranking' },
+    { id: 'nuevos',       label: 'Nuevos' },
+    { id: 'invitadores',  label: 'Invitadores' },
+    { id: 'listas',       label: 'Listas' },
   ]
+
+  function toggleInviter(id) {
+    setExpandedInviters(prev => {
+      const next = new Set(prev)
+      next.has(id) ? next.delete(id) : next.add(id)
+      return next
+    })
+  }
 
   return (
     <div className="flex flex-col" style={{ background: 'var(--bg)', minHeight: '100%' }}>
@@ -219,9 +254,10 @@ export default function Reports() {
                     </p>
 
                     {filteredRecords.slice(0, 10).map(r => {
-                      const total   = filteredMembers.length
-                      const present = Object.values(r.records || {}).filter(v => v === 'present').length
-                      const late    = Object.values(r.records || {}).filter(v => v === 'late').length
+                      const eligibleIds = new Set(filteredMembers.filter(m => !m.joinDate || m.joinDate <= r.date).map(m => m.id))
+                      const total   = eligibleIds.size
+                      const present = Object.entries(r.records || {}).filter(([id, v]) => eligibleIds.has(id) && v === 'present').length
+                      const late    = Object.entries(r.records || {}).filter(([id, v]) => eligibleIds.has(id) && v === 'late').length
                       const pct     = total > 0 ? Math.round(((present + late) / total) * 100) : 0
                       const color   = pct >= 70 ? 'var(--green)' : pct >= 40 ? 'var(--amber)' : 'var(--red)'
                       return (
@@ -339,6 +375,104 @@ export default function Reports() {
               </div>
             )}
 
+            {/* Invitadores tab */}
+            {activeTab === 'invitadores' && (
+              <div className="flex flex-col gap-3">
+                <p className="text-xs" style={{ color: 'var(--text-2)' }}>
+                  Personas que han traído más invitados al grupo en el período seleccionado.
+                  Solo cuenta miembros con <strong style={{ color: 'var(--accent)' }}>invitador asignado</strong> y fecha de ingreso dentro del rango.
+                </p>
+
+                {invitationRanking.length === 0 ? (
+                  <EmptyState icon={HandHeart} title="Sin datos"
+                    description="No hay invitaciones registradas en este período. Asigna el campo «Invitado por» al editar un miembro." />
+                ) : (
+                  <>
+                    {/* Totales */}
+                    <div className="grid grid-cols-2 gap-3">
+                      <div className="flex flex-col items-center gap-1 p-3 rounded-[12px]"
+                        style={{ background: 'var(--surface)', border: '1px solid var(--border)' }}>
+                        <span className="font-syne font-extrabold text-2xl" style={{ color: 'var(--accent)' }}>
+                          {invitationRanking.length}
+                        </span>
+                        <span className="text-[10px] font-bold uppercase tracking-wide text-center" style={{ color: 'var(--text-2)' }}>
+                          Invitadores
+                        </span>
+                      </div>
+                      <div className="flex flex-col items-center gap-1 p-3 rounded-[12px]"
+                        style={{ background: 'var(--surface)', border: '1px solid var(--border)' }}>
+                        <span className="font-syne font-extrabold text-2xl" style={{ color: 'var(--green)' }}>
+                          {invitationRanking.reduce((s, r) => s + r.count, 0)}
+                        </span>
+                        <span className="text-[10px] font-bold uppercase tracking-wide text-center" style={{ color: 'var(--text-2)' }}>
+                          Total invitados
+                        </span>
+                      </div>
+                    </div>
+
+                    {/* Lista */}
+                    {invitationRanking.map((r, i) => {
+                      const medal    = i === 0 ? '🥇' : i === 1 ? '🥈' : i === 2 ? '🥉' : `${i + 1}.`
+                      const expanded = expandedInviters.has(r.id)
+                      return (
+                        <div key={r.id} className="rounded-[12px] overflow-hidden"
+                          style={{ background: 'var(--surface)', border: '1px solid var(--border)' }}>
+                          {/* Fila principal */}
+                          <button type="button" onClick={() => toggleInviter(r.id)}
+                            className="w-full flex items-center gap-3 px-4 py-3 press text-left">
+                            <span className="text-sm font-bold w-6 text-center flex-shrink-0"
+                              style={{ color: 'var(--text-3)' }}>{medal}</span>
+                            <div className="flex-1 min-w-0">
+                              <p className="text-sm font-bold truncate" style={{ color: 'var(--text)' }}>{r.name}</p>
+                              <p className="text-xs" style={{ color: 'var(--text-2)' }}>
+                                {r.count} persona{r.count !== 1 ? 's' : ''} invitada{r.count !== 1 ? 's' : ''}
+                              </p>
+                            </div>
+                            <div className="flex items-center gap-2 flex-shrink-0">
+                              <span className="font-syne font-extrabold text-xl" style={{ color: 'var(--accent)' }}>
+                                {r.count}
+                              </span>
+                              {expanded
+                                ? <CaretUp size={14} style={{ color: 'var(--text-3)' }} />
+                                : <CaretDown size={14} style={{ color: 'var(--text-3)' }} />}
+                            </div>
+                          </button>
+
+                          {/* Lista expandida de invitados */}
+                          {expanded && (
+                            <div style={{ borderTop: '1px solid var(--border)' }}>
+                              {r.invited.map((m, mi) => (
+                                <div key={m.id}
+                                  className="flex items-center gap-3 px-4 py-2.5"
+                                  style={{
+                                    borderTop: mi > 0 ? '1px solid var(--border)' : 'none',
+                                    background: 'var(--card)',
+                                  }}>
+                                  <div className="w-1.5 h-1.5 rounded-full flex-shrink-0"
+                                    style={{ background: 'var(--accent)' }} />
+                                  <span className="flex-1 text-sm" style={{ color: 'var(--text)' }}>{m.fullName}</span>
+                                  {m.joinDate && (
+                                    <span className="text-xs" style={{ color: 'var(--text-3)' }}>{m.joinDate}</span>
+                                  )}
+                                </div>
+                              ))}
+                            </div>
+                          )}
+                        </div>
+                      )
+                    })}
+
+                    <button
+                      onClick={() => exportInvitationRanking(invitationRanking, groupName)}
+                      className="h-12 rounded-[12px] font-bold text-sm flex items-center justify-center gap-2 press"
+                      style={{ background: 'rgba(59,130,246,0.12)', color: 'var(--accent)', border: '1px solid rgba(59,130,246,0.25)' }}>
+                      <DownloadSimple size={18} /> Exportar ranking de invitaciones
+                    </button>
+                  </>
+                )}
+              </div>
+            )}
+
             {/* Listas tab */}
             {activeTab === 'listas' && (
               <div className="flex flex-col gap-5">
@@ -438,8 +572,10 @@ export default function Reports() {
                     disabled={!listMeeting}
                     onClick={() => {
                       if (!selectedMeetingRecord) return
-                      const grp = groups.find(g => g.id === selectedMeetingRecord.groupId)
-                      exportMeetingAttendeesList(selectedMeetingRecord, selectedMeetingMembers, grp?.name || '')
+                      const grp    = groups.find(g => g.id === selectedMeetingRecord.groupId)
+                      const grpMap = Object.fromEntries(groups.map(g => [g.id, g.name]))
+                      const allWithGroup = members.map(m => ({ ...m, _groupName: grpMap[m.groupId] || '' }))
+                      exportMeetingAttendeesList(selectedMeetingRecord, selectedMeetingMembers, allWithGroup, grp?.name || '')
                     }}
                     className="h-11 rounded-[10px] font-bold text-sm flex items-center justify-center gap-2 press"
                     style={{

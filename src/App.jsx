@@ -5,7 +5,7 @@ import Toast from './components/ui/Toast'
 import LoadingSpinner from './components/ui/LoadingSpinner'
 
 import Login        from './pages/Login'
-import SetupAdmin   from './pages/SetupAdmin'
+//import SetupAdmin   from './pages/SetupAdmin'
 import Dashboard    from './pages/Dashboard'
 import Attendance   from './pages/Attendance'
 import Members      from './pages/Members'
@@ -35,7 +35,7 @@ export default function App() {
           path="/login"
           element={user ? <Navigate to="/" replace /> : <Login />}
         />
-        <Route path="/setup" element={<SetupAdmin />} />
+        {/*<Route path="/setup" element={<SetupAdmin />} />*/}
 
         {/* Protected */}
         <Route path="/" element={

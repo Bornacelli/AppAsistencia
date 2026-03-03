@@ -1,17 +1,19 @@
 import { useState, useEffect, useMemo } from 'react'
 import { usePersistedState } from '../hooks/usePersistedState'
-import { collection, getDocs } from 'firebase/firestore'
+import { collection, getDocs, doc, deleteDoc } from 'firebase/firestore'
 import { db } from '../firebase'
 import { useAuth } from '../context/AuthContext'
+import { useToast } from '../context/ToastContext'
 import LoadingSpinner from '../components/ui/LoadingSpinner'
 import EmptyState from '../components/ui/EmptyState'
 import Modal from '../components/ui/Modal'
-import { CalendarBlank, CheckCircle, XCircle } from '@phosphor-icons/react'
+import { CalendarBlank, CheckCircle, XCircle, Trash } from '@phosphor-icons/react'
 import { formatDateShort } from '../utils/dates'
 import { memberInAnyGroup, memberInGroup } from '../utils/members'
 
 export default function Meetings() {
   const { profile } = useAuth()
+  const { ok, error: toastError } = useToast()
   const isAdmin = profile?.role === 'admin' || profile?.role === 'super_admin'
 
   const [records,   setRecords]   = useState([])
@@ -131,13 +133,22 @@ export default function Meetings() {
           groupName={selRecord.grpName}
           allMembers={members}
           onClose={() => setSelRecord(null)}
+          onDelete={isAdmin ? async () => {
+            if (!window.confirm('¿Eliminar esta reunión? Esta acción no se puede deshacer.')) return
+            try {
+              await deleteDoc(doc(db, 'attendance', selRecord.record.id))
+              ok('Reunión eliminada')
+              setSelRecord(null)
+              loadData()
+            } catch { toastError('Error al eliminar') }
+          } : null}
         />
       )}
     </div>
   )
 }
 
-function MeetingDetail({ record, members, groupName, allMembers, onClose }) {
+function MeetingDetail({ record, members, groupName, allMembers, onClose, onDelete }) {
   const recs = record.records || {}
   // Only consider records for members who had joined by this meeting's date
   const eligibleEntries = Object.entries(recs).filter(([id]) => {
@@ -200,6 +211,16 @@ function MeetingDetail({ record, members, groupName, allMembers, onClose }) {
 
         <Section title="Presentes" ids={presentIds} icon={CheckCircle} colorVal="var(--green)" />
         <Section title="Ausentes"  ids={absentIds}  icon={XCircle}      colorVal="var(--red)" />
+
+        {onDelete && (
+          <button
+            onClick={onDelete}
+            className="flex items-center justify-center gap-2 w-full py-2.5 rounded-[10px] text-sm font-bold press"
+            style={{ background: 'var(--red-bg)', border: '1px solid var(--red-bdr)', color: 'var(--red)' }}>
+            <Trash size={15} weight="bold" />
+            Eliminar reunión
+          </button>
+        )}
       </div>
     </Modal>
   )

@@ -11,10 +11,22 @@ export function AlertProvider({ children }) {
   const { profile } = useAuth()
   const isAdmin = profile?.role === 'admin' || profile?.role === 'super_admin'
 
-  const [alerts,    setAlerts]    = useState([])
-  // Dismissed state is in-memory only — resets every time the app is opened
-  const [dismissed, setDismissed] = useState({})
-  const [loading,   setLoading]   = useState(true)
+  const [alerts,  setAlerts]  = useState([])
+  const [loading, setLoading] = useState(true)
+
+  // Dismissed state persists in localStorage, but resets each new day
+  const [dismissed, setDismissed] = useState(() => {
+    try {
+      const today = new Date().toISOString().slice(0, 10)
+      if (localStorage.getItem('cic_dismiss_date') !== today) {
+        localStorage.removeItem('cic_dismissed')
+        localStorage.setItem('cic_dismiss_date', today)
+        return {}
+      }
+      const saved = localStorage.getItem('cic_dismissed')
+      return saved ? JSON.parse(saved) : {}
+    } catch { return {} }
+  })
 
   const loadAlerts = useCallback(async () => {
     if (!profile) { setLoading(false); return }
@@ -137,13 +149,18 @@ export function AlertProvider({ children }) {
   }, [loadAlerts])
 
   function dismissAlert(key) {
-    setDismissed(prev => ({ ...prev, [key]: true }))
+    setDismissed(prev => {
+      const next = { ...prev, [key]: true }
+      try { localStorage.setItem('cic_dismissed', JSON.stringify(next)) } catch {}
+      return next
+    })
   }
 
   function dismissAll(keys) {
     setDismissed(prev => {
       const next = { ...prev }
-      keys.forEach(key => { next[key] = true })
+      keys.forEach(k => { next[k] = true })
+      try { localStorage.setItem('cic_dismissed', JSON.stringify(next)) } catch {}
       return next
     })
   }

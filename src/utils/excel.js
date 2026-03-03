@@ -219,6 +219,18 @@ function normalizeDate(raw) {
   return '' // unrecognized format → ignore
 }
 
+// Remove accents/diacritics and lowercase — for fuzzy matching
+function norm(str) {
+  return String(str).normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().trim()
+}
+
+// Safe string extraction — avoids returning a Date object's toString() for text fields
+function cellStr(raw) {
+  if (raw === null || raw === undefined) return ''
+  if (raw instanceof Date) return '' // Date in a text-only field is a SheetJS parse artifact
+  return String(raw).trim()
+}
+
 // Parse members from an imported Excel file
 export function parseMembersFromExcel(file, groups) {
   return new Promise((resolve, reject) => {
@@ -229,38 +241,39 @@ export function parseMembersFromExcel(file, groups) {
         const ws = wb.Sheets[wb.SheetNames[0]]
         const rows = XLSX.utils.sheet_to_json(ws, { header: 1, defval: '' })
 
+        // Keys are accent-free and lowercased so matching is accent-insensitive
         const statusMap = {
-          'nuevo': 'new',
+          'nuevo':          'new',
           'en seguimiento': 'following',
-          'consolidado': 'consolidated',
-          'miembro': 'member',
-          'líder': 'leader',
-          'lider': 'leader',
+          'consolidado':    'consolidated',
+          'miembro':        'member',
+          'lider':          'leader',
+          'visitante':      'visitor',
         }
 
         const members = []
         // Start at row 1 to skip headers; skip row 2 if it's the sample/info row
         for (let i = 1; i < rows.length; i++) {
           const row = rows[i]
-          const fullName = String(row[0] || '').trim()
+          const fullName = cellStr(row[0])
           if (!fullName || fullName === '← Campo obligatorio') continue
 
-          const rawStatus = String(row[6] || '').trim().toLowerCase()
-          const spiritualStatus = statusMap[rawStatus] || 'new'
+          const spiritualStatus = statusMap[norm(row[6])] || 'new'
 
-          const rawGroup = String(row[7] || '').trim().toLowerCase()
-          const group = groups.find(g => g.name.toLowerCase() === rawGroup)
+          // Match group by name ignoring accents and casing
+          const rawGroup = norm(row[7])
+          const group = groups.find(g => norm(g.name) === rawGroup)
 
           members.push({
             fullName,
-            shortName:      String(row[1] || '').trim(),
-            phone:          String(row[2] || '').trim(),
-            address:        String(row[3] || '').trim(),
+            shortName:      cellStr(row[1]),
+            phone:          cellStr(row[2]),
+            address:        cellStr(row[3]),
             birthDate:      normalizeDate(row[4]),
             joinDate:       normalizeDate(row[5]),
             spiritualStatus,
             groupId:        group?.id || '',
-            referredBy:     String(row[8] || '').trim(),
+            referredBy:     cellStr(row[8]),
             active:         true,
             createdAt:      new Date().toISOString(),
           })

@@ -9,7 +9,7 @@ import Avatar from '../components/ui/Avatar'
 import LoadingSpinner from '../components/ui/LoadingSpinner'
 import {
   MagnifyingGlass, CheckCircle, XCircle,
-  UserPlus, CloudCheck, Warning
+  UserPlus, CloudCheck, Warning, CalendarBlank
 } from '@phosphor-icons/react'
 import { todayStr, formatDateShort } from '../utils/dates'
 
@@ -25,9 +25,10 @@ export default function Attendance() {
   const [members,      setMembers]      = useState([])       // current group members
   const [extraMembers, setExtraMembers] = useState([])       // cross-group members already in this attendance
   const [allMembers,   setAllMembers]   = useState([])       // ALL members across groups
-  const [attendance,   setAttendance]   = useState({})
-  const [search,       setSearch]       = useState('')
-  const [loading,      setLoading]      = useState(true)
+  const [attendance,    setAttendance]    = useState({})
+  const [meetingExists, setMeetingExists] = useState(false)
+  const [search,        setSearch]        = useState('')
+  const [loading,       setLoading]       = useState(true)
 
   // Auto-save state
   const saveTimerRef  = useRef(null)
@@ -117,6 +118,7 @@ export default function Attendance() {
         })
       }
       setAttendance(initAtt)
+      setMeetingExists(meetingExists)
 
       // Extra members: from other groups already in this attendance record
       // For past dates, exclude members who hadn't joined yet
@@ -271,6 +273,7 @@ export default function Attendance() {
 
   if (loading && !selGroup) return <LoadingSpinner fullScreen />
 
+  const isPast    = selDate < todayStr()
   const groupName = groups.find(g => g.id === selGroup)?.name || 'General'
   const dateLabel = formatDateShort(selDate)
   const getGroupName = (groupId) => groups.find(g => g.id === groupId)?.name || allMembers.find(m => m.groupId === groupId) ? (groups.find(g => g.id === groupId)?.name || 'Otro grupo') : 'Otro grupo'
@@ -311,19 +314,21 @@ export default function Attendance() {
           </div>
         </div>
         </button>
-        {/* Present / Absent only (no tardanza) */}
-        <div className="flex gap-1.5 flex-shrink-0">
-          <button onClick={() => mark(m.id, 'present')}
-            className="w-10 h-10 rounded-[9px] flex items-center justify-center press-sm"
-            style={{ background: st === 'present' ? 'var(--green-bg)' : 'var(--card)', border: `1px solid ${st === 'present' ? 'rgba(34,197,94,0.3)' : 'var(--border)'}`, color: st === 'present' ? 'var(--green)' : 'var(--text-2)' }}>
-            <CheckCircle size={22} weight={st === 'present' ? 'fill' : 'regular'} />
-          </button>
-          <button onClick={() => mark(m.id, 'absent')}
-            className="w-10 h-10 rounded-[9px] flex items-center justify-center press-sm"
-            style={{ background: st === 'absent' ? 'var(--red-bg)' : 'var(--card)', border: `1px solid ${st === 'absent' ? 'rgba(239,68,68,0.3)' : 'var(--border)'}`, color: st === 'absent' ? 'var(--red)' : 'var(--text-2)' }}>
-            <XCircle size={22} weight={st === 'absent' ? 'fill' : 'regular'} />
-          </button>
-        </div>
+        {/* Present / Absent buttons — hidden for past dates with no meeting record */}
+        {!(isPast && !meetingExists) && (
+          <div className="flex gap-1.5 flex-shrink-0">
+            <button onClick={() => mark(m.id, 'present')}
+              className="w-10 h-10 rounded-[9px] flex items-center justify-center press-sm"
+              style={{ background: st === 'present' ? 'var(--green-bg)' : 'var(--card)', border: `1px solid ${st === 'present' ? 'rgba(34,197,94,0.3)' : 'var(--border)'}`, color: st === 'present' ? 'var(--green)' : 'var(--text-2)' }}>
+              <CheckCircle size={22} weight={st === 'present' ? 'fill' : 'regular'} />
+            </button>
+            <button onClick={() => mark(m.id, 'absent')}
+              className="w-10 h-10 rounded-[9px] flex items-center justify-center press-sm"
+              style={{ background: st === 'absent' ? 'var(--red-bg)' : 'var(--card)', border: `1px solid ${st === 'absent' ? 'rgba(239,68,68,0.3)' : 'var(--border)'}`, color: st === 'absent' ? 'var(--red)' : 'var(--text-2)' }}>
+              <XCircle size={22} weight={st === 'absent' ? 'fill' : 'regular'} />
+            </button>
+          </div>
+        )}
       </div>
     )
   }
@@ -388,6 +393,17 @@ export default function Attendance() {
       <div className="flex-1 px-4 pb-4">
         {loading ? <LoadingSpinner /> : (
           <>
+            {/* No-meeting banner for past dates */}
+            {isPast && !meetingExists && members.length > 0 && (
+              <div className="mb-3 mt-1 flex items-center gap-3 px-4 py-3 rounded-[12px]"
+                style={{ background: 'var(--surface)', border: '1px solid var(--border)' }}>
+                <CalendarBlank size={16} style={{ color: 'var(--text-3)', flexShrink: 0 }} />
+                <p className="text-xs" style={{ color: 'var(--text-2)' }}>
+                  No hay reunión registrada para esta fecha.
+                </p>
+              </div>
+            )}
+
             {/* NEW PERSON CARD */}
             {showAddCard && (
               <div className="mb-3 rounded-[12px] p-4" style={{ background: 'var(--card)', border: '1.5px dashed rgba(245,158,11,0.3)' }}>

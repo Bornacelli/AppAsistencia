@@ -3,21 +3,7 @@ import { collection, getDocs, doc, getDoc } from 'firebase/firestore'
 import { db } from '../firebase'
 import { useAuth } from './AuthContext'
 import { isBirthdaySoon, isBirthdayToday, ageFrom, formatBirthday, localDateStr, todayStr } from '../utils/dates'
-import { memberInAnyGroup } from '../utils/members'
-
-const DISMISSED_KEY = 'dismissed_alerts_v2'
-
-function getDismissed() {
-  try {
-    const raw = localStorage.getItem(DISMISSED_KEY)
-    if (!raw) return {}
-    return JSON.parse(raw)
-  } catch { return {} }
-}
-
-function saveDismissed(map) {
-  localStorage.setItem(DISMISSED_KEY, JSON.stringify(map))
-}
+import { memberInAnyGroup, getMemberGroupIds } from '../utils/members'
 
 const AlertContext = createContext(null)
 
@@ -26,7 +12,8 @@ export function AlertProvider({ children }) {
   const isAdmin = profile?.role === 'admin' || profile?.role === 'super_admin'
 
   const [alerts,    setAlerts]    = useState([])
-  const [dismissed, setDismissed] = useState(() => getDismissed())
+  // Dismissed state is in-memory only — resets every time the app is opened
+  const [dismissed, setDismissed] = useState({})
   const [loading,   setLoading]   = useState(true)
 
   const loadAlerts = useCallback(async () => {
@@ -52,13 +39,6 @@ export function AlertProvider({ children }) {
       }
       attDocs.sort((a, b) => (b.date || '').localeCompare(a.date || ''))
 
-      const vSnap = await getDocs(collection(db, 'visitors'))
-      let visitors = vSnap.docs.map(d => ({ id: d.id, ...d.data() })).filter(v => v.status !== 'converted')
-      if (!isAdmin) {
-        const gids = profile?.groupIds || []
-        visitors = visitors.filter(v => gids.includes(v.groupId))
-      }
-
       const alertList = []
 
       // 1. Birthday alerts
@@ -83,83 +63,89 @@ export function AlertProvider({ children }) {
         }
       })
 
-      // 2. Absence alerts
-      if (attDocs.length >= absenceWeeks) {
-        const recentDates = attDocs.slice(0, absenceWeeks).map(d => d.date)
-        members.forEach(m => {
-          const eligibleDates = recentDates.filter(date => !m.joinDate || date >= m.joinDate)
-          if (eligibleDates.length < absenceWeeks) return
-          const consecutive = eligibleDates.every(date => {
-            const rec = attDocs.find(d => d.date === date)
-            if (!rec) return true
-            const st = rec.records?.[m.id]
-            return !st || st === 'absent'
-          })
-          if (consecutive) {
-            alertList.push({
-              type:     'absence',
-              priority: 2,
-              label:    `Ausente ${absenceWeeks} reunión${absenceWeeks > 1 ? 'es' : ''} consecutiva${absenceWeeks > 1 ? 's' : ''}`,
-              name:     m.fullName,
-              phone:    m.phone,
-              memberId: m.id,
-              alertKey: `absence_${m.id}`,
-            })
-          }
+      // 2. Absence alerts — only meetings where the member has an explicit record (avoids joinDate false negatives)
+      members.forEach(m => {
+        const memberGroups = getMemberGroupIds(m)
+        const groupDocs = attDocs.filter(r => {
+          if (r.groupId && memberGroups.length > 0 && !memberGroups.includes(r.groupId)) return false
+          return true
         })
-      }
-
-      // 3. Visitor follow-up alerts
-      const sevenStr = localDateStr(new Date(Date.now() - 7 * 24 * 60 * 60 * 1000))
-      visitors.forEach(v => {
-        const notes = v.notes || []
-        const lastNote = notes.length > 0 ? notes[notes.length - 1] : null
-        if (!lastNote || lastNote.date < sevenStr) {
-          const daysSince = lastNote
-            ? Math.round((new Date(todayStr()) - new Date(lastNote.date)) / (1000 * 60 * 60 * 24))
-            : null
+        // Only docs where this member was explicitly recorded (present or absent)
+        const memberDocs = groupDocs.filter(r => m.id in (r.records || {}))
+        if (memberDocs.length < absenceWeeks) return
+        const consecutive = memberDocs.slice(0, absenceWeeks).every(rec => {
+          const st = rec.records[m.id]
+          return !st || st === 'absent'
+        })
+        if (consecutive) {
           alertList.push({
-            type:      'visitor',
-            priority:  3,
-            label:     lastNote ? `Sin seguimiento hace ${daysSince} días` : 'Sin seguimiento registrado',
-            name:      v.name,
-            phone:     v.phone,
-            visitorId: v.id,
-            alertKey:  `visitor_${v.id}`,
+            type:     'absence',
+            priority: 2,
+            label:    `Ausente ${absenceWeeks} reunión${absenceWeeks > 1 ? 'es' : ''} consecutiva${absenceWeeks > 1 ? 's' : ''}`,
+            name:     m.fullName,
+            phone:    m.phone,
+            memberId: m.id,
+            alertKey: `absence_${m.id}`,
           })
         }
       })
 
+      // 3. Visitor follow-up alerts — isolated so a failure here doesn't block birthday/absence alerts
+      try {
+        const vSnap = await getDocs(collection(db, 'visitors'))
+        let visitors = vSnap.docs.map(d => ({ id: d.id, ...d.data() })).filter(v => v.status !== 'converted')
+        if (!isAdmin) {
+          const gids = profile?.groupIds || []
+          visitors = visitors.filter(v => gids.includes(v.groupId))
+        }
+        const sevenStr = localDateStr(new Date(Date.now() - 7 * 24 * 60 * 60 * 1000))
+        visitors.forEach(v => {
+          const notes = v.notes || []
+          const lastNote = notes.length > 0 ? notes[notes.length - 1] : null
+          if (!lastNote || lastNote.date < sevenStr) {
+            const daysSince = lastNote
+              ? Math.round((new Date(todayStr()) - new Date(lastNote.date)) / (1000 * 60 * 60 * 24))
+              : null
+            alertList.push({
+              type:      'visitor',
+              priority:  3,
+              label:     lastNote ? `Sin seguimiento hace ${daysSince} días` : 'Sin seguimiento registrado',
+              name:      v.name,
+              phone:     v.phone,
+              visitorId: v.id,
+              alertKey:  `visitor_${v.id}`,
+            })
+          }
+        })
+      } catch (vErr) {
+        console.warn('AlertContext: no se pudieron cargar alertas de visitantes:', vErr)
+      }
+
       alertList.sort((a, b) => a.priority - b.priority || (a.name || '').localeCompare(b.name || '', 'es'))
       setAlerts(alertList)
-
-      // Clean up old dismissals
-      const today = todayStr()
-      const freshDismissed = {}
-      Object.entries(getDismissed()).forEach(([k, date]) => {
-        const daysDiff = Math.round((new Date(today) - new Date(date)) / (1000 * 60 * 60 * 24))
-        const keep = k.startsWith('birthday_') ? daysDiff < 1 : daysDiff < 7
-        if (keep) freshDismissed[k] = date
-      })
-      saveDismissed(freshDismissed)
-      setDismissed(freshDismissed)
     } catch (e) { console.error(e) }
     finally { setLoading(false) }
   }, [profile, isAdmin])
 
   useEffect(() => { loadAlerts() }, [loadAlerts])
 
+  // Refresh when the app comes back to the foreground (PWA / tab switch)
+  useEffect(() => {
+    const onVisible = () => { if (document.visibilityState === 'visible') loadAlerts() }
+    document.addEventListener('visibilitychange', onVisible)
+    return () => document.removeEventListener('visibilitychange', onVisible)
+  }, [loadAlerts])
+
   function dismissAlert(key) {
-    const next = { ...dismissed, [key]: todayStr() }
-    setDismissed(next)
-    saveDismissed(next)
+    setDismissed(prev => ({ ...prev, [key]: true }))
   }
 
   function dismissAll(keys) {
-    const next = { ...dismissed }
-    keys.forEach(key => { next[key] = todayStr() })
-    setDismissed(next)
-    saveDismissed(next)
+    setDismissed(prev => {
+      const next = { ...prev }
+      keys.forEach(key => { next[key] = true })
+      return next
+    })
   }
 
   const visibleAlerts = alerts.filter(a => !dismissed[a.alertKey])

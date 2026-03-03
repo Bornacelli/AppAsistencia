@@ -1,15 +1,15 @@
 import { useState, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { collection, getDocs, doc, getDoc, query, where, orderBy, limit } from 'firebase/firestore'
+import { collection, getDocs, doc, getDoc, query, where } from 'firebase/firestore'
 import { db } from '../firebase'
 import { useAuth } from '../context/AuthContext'
+import { useAlerts } from '../context/AlertContext'
 import LoadingSpinner from '../components/ui/LoadingSpinner'
 import {
   Users, CalendarCheck, ClipboardText, Bell, ChartBar,
   Handshake, Cross, ArrowRight, Cake, Warning,
   UserCircleMinus
 } from '@phosphor-icons/react'
-import { todayStr, formatDate, isBirthdaySoon, isBirthdayToday, localDateStr } from '../utils/dates'
 import { memberInAnyGroup } from '../utils/members'
 
 function StatTile({ icon: Icon, value, label, color = 'blue', to }) {
@@ -72,8 +72,8 @@ export default function Dashboard() {
   const [stats,      setStats]      = useState({ totalMembers: 0, totalSessions: 0, lastPresent: 0, lastTotal: 0 })
   const [recentRecs, setRecentRecs] = useState([])
   const [members,    setMembers]    = useState([])
-  const [alerts,     setAlerts]     = useState([])
   const [config,     setConfig]     = useState({})
+  const { visibleAlerts: alerts, refreshAlerts } = useAlerts()
 
   const isAdmin = profile?.role === 'admin' || profile?.role === 'super_admin'
   const today = new Date()
@@ -82,6 +82,11 @@ export default function Dashboard() {
   useEffect(() => {
     loadDashboard()
   }, [profile])
+
+  // Refresh alerts every time the user navigates to the Dashboard
+  useEffect(() => {
+    refreshAlerts()
+  }, []) // eslint-disable-line react-hooks/exhaustive-deps
 
   async function loadDashboard() {
     setLoading(true)
@@ -116,61 +121,6 @@ export default function Dashboard() {
       const lastTotal   = last ? members.filter(m => !m.joinDate || m.joinDate <= last.date).length : 0
 
       setStats({ totalMembers: members.length, totalSessions: attDocs.length, lastPresent, lastTotal })
-
-      // Alerts
-      const alertList = []
-      const absenceWeeks = cfg.absenceAlertWeeks || 2
-
-      // Birthday alerts
-      members.forEach(m => {
-        if (isBirthdaySoon(m.birthDate, 7)) {
-          alertList.push({
-            type: 'birthday',
-            label: isBirthdayToday(m.birthDate) ? `¡Hoy cumple años ${m.shortName || m.fullName.split(' ')[0]}!` : `Cumpleaños próximo: ${m.shortName || m.fullName.split(' ')[0]}`,
-            phone: m.phone,
-            name: m.fullName,
-          })
-        }
-      })
-
-      // Absence alerts
-      if (attDocs.length >= absenceWeeks) {
-        const lastNDates = attDocs.slice(0, absenceWeeks).map(d => d.date)
-        members.forEach(m => {
-          // Only check meetings that occurred on or after the member's joinDate
-          const eligibleDates = lastNDates.filter(date => !m.joinDate || date >= m.joinDate)
-          if (eligibleDates.length < absenceWeeks) return
-
-          const consecutiveAbsent = eligibleDates.every(date => {
-            const rec = attDocs.find(d => d.date === date)
-            if (!rec) return true
-            const status = rec.records?.[m.id]
-            return !status || status === 'absent'
-          })
-          if (consecutiveAbsent) {
-            alertList.push({
-              type: 'absence',
-              label: `${m.shortName || m.fullName.split(' ')[0]} ausente ${absenceWeeks} semanas seguidas`,
-              memberId: m.id,
-            })
-          }
-        })
-      }
-
-      // Visitor follow-up alerts
-      const visitorsSnap = await getDocs(query(collection(db, 'visitors'), where('status', '!=', 'converted')))
-      const visitors = visitorsSnap.docs.map(d => ({ id: d.id, ...d.data() }))
-      const sevenDaysAgo = new Date(); sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7)
-      const sevenStr = localDateStr(sevenDaysAgo)
-      visitors.forEach(v => {
-        const notes = v.notes || []
-        const lastNote = notes.length > 0 ? notes[notes.length - 1] : null
-        if (!lastNote || lastNote.date < sevenStr) {
-          alertList.push({ type: 'visitor', label: `Visitante sin seguimiento: ${v.name}`, visitorId: v.id })
-        }
-      })
-
-      setAlerts(alertList.slice(0, 10))
     } catch (e) {
       console.error(e)
     } finally {
@@ -251,7 +201,10 @@ export default function Dashboard() {
                     className="flex items-center gap-3 px-4 py-3 rounded-[12px] w-full text-left press"
                     style={{ background: bg, border: `1px solid ${color}33` }}>
                     <Icon size={16} style={{ color, flexShrink: 0 }} />
-                    <span className="text-xs font-semibold flex-1" style={{ color }}>{a.label}</span>
+                    <div className="flex-1 min-w-0">
+                      <p className="text-xs font-bold truncate" style={{ color }}>{a.name}</p>
+                      <p className="text-[11px] font-medium mt-0.5 truncate" style={{ color, opacity: 0.8 }}>{a.label}</p>
+                    </div>
                     <ArrowRight size={14} style={{ color, flexShrink: 0, opacity: 0.6 }} />
                   </button>
                 )

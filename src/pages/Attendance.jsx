@@ -85,18 +85,24 @@ export default function Attendance() {
       // Load existing attendance
       const docId = selGroup === '__default__' ? selDate : `${selGroup}_${selDate}`
       let initAtt = {}
+      let meetingExists = false
       const attSnap = await getDoc(doc(db, 'attendance', docId))
       if (attSnap.exists()) {
         initAtt = { ...(attSnap.data().records || {}) }
+        meetingExists = true
       } else if (selGroup !== '__default__') {
         const legacySnap = await getDoc(doc(db, 'attendance', selDate))
-        if (legacySnap.exists()) initAtt = { ...(legacySnap.data().records || {}) }
+        if (legacySnap.exists()) {
+          initAtt = { ...(legacySnap.data().records || {}) }
+          meetingExists = true
+        }
       }
 
-      // Auto-mark absent for past dates (members with no record)
-      // Skip members whose joinDate is after the meeting date (they weren't in the group yet)
+      // Auto-mark absent for past dates only if a meeting record exists for that date.
+      // If no record exists → no meeting happened that day → don't auto-mark.
+      // Also skip members whose joinDate is after the meeting date (they weren't in the group yet).
       const isPast = selDate < todayStr()
-      if (isPast) {
+      if (isPast && meetingExists) {
         groupMems.forEach(m => {
           if (!(m.id in initAtt) && (!m.joinDate || m.joinDate <= selDate)) {
             initAtt[m.id] = 'absent'

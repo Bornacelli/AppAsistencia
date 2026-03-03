@@ -52,30 +52,23 @@ export default function Absences() {
 
       setGroups(gSnap.docs.map(d => ({ id: d.id, ...d.data() })))
 
-      // Use the exact same detection logic as Alerts.jsx,
-      // but filter attendance to each member's own group(s) to avoid cross-group pollution
+      // Only look at meetings where the member has an explicit record (avoids joinDate false negatives)
       const result = []
       members.forEach(m => {
         const memberGroups = getMemberGroupIds(m)
 
-        // Only look at records from this member's group(s), after their joinDate
-        const memberDocs = allAttDocs.filter(r => {
-          if (m.joinDate && r.date < m.joinDate) return false
+        // Filter to this member's group(s)
+        const groupDocs = allAttDocs.filter(r => {
           if (r.groupId && memberGroups.length > 0 && !memberGroups.includes(r.groupId)) return false
           return true
         })
 
+        // Only docs where this member was explicitly recorded (present or absent)
+        const memberDocs = groupDocs.filter(r => m.id in (r.records || {}))
         if (memberDocs.length < absenceWeeks) return
 
-        // Check: are the last absenceWeeks records all absences? (same logic as Alerts.jsx)
-        const recentDates = memberDocs.slice(0, absenceWeeks).map(d => d.date)
-        const eligibleDates = recentDates.filter(date => !m.joinDate || date >= m.joinDate)
-        if (eligibleDates.length < absenceWeeks) return
-
-        const consecutive = eligibleDates.every(date => {
-          const rec = memberDocs.find(d => d.date === date)
-          if (!rec) return true
-          const st = rec.records?.[m.id]
+        const consecutive = memberDocs.slice(0, absenceWeeks).every(rec => {
+          const st = rec.records[m.id]
           return !st || st === 'absent'
         })
 

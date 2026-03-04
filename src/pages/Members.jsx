@@ -17,7 +17,6 @@ import { generateMembersTemplate, parseMembersFromExcel } from '../utils/excel'
 import { todayStr, formatDateShort, localDateStr } from '../utils/dates'
 
 const SPIRITUAL_LABEL = {
-  visitor:     'Visitante',
   new:         'Nuevo',
   following:   'En seguimiento',
   consolidated:'Consolidado',
@@ -25,7 +24,6 @@ const SPIRITUAL_LABEL = {
   leader:      'Líder',
 }
 const SPIRITUAL_COLOR = {
-  visitor:     'var(--text-3)',
   new:         'var(--amber)',
   following:   'var(--accent)',
   consolidated:'var(--green)',
@@ -43,7 +41,7 @@ function normalizeVisitor(v) {
     fullName: v.name,
     phone:    v.phone || '',
     groupId:  v.groupId,
-    spiritualStatus: v.status === 'following' ? 'following' : 'visitor',
+    spiritualStatus: v.status === 'following' ? 'following' : '',
     active: true,
   }
 }
@@ -64,12 +62,10 @@ function normalizeMember(m) {
 }
 
 const STATUS_LABEL_VISITOR = {
-  visitor:   'Visitante',
   following: 'En seguimiento',
   converted: 'Consolidado',
 }
 const STATUS_COLOR_VISITOR = {
-  visitor:   'var(--accent)',
   following: 'var(--amber)',
   converted: 'var(--green)',
 }
@@ -316,7 +312,6 @@ export default function Members() {
               value: filterStatus, setter: setFilterStatus,
               opts: [
                 ['', 'Todos'],
-                ['visitor', 'Visitante'],
                 ['new', 'Nuevo'],
                 ['following', 'En seguimiento'],
                 ['consolidated', 'Consolidado'],

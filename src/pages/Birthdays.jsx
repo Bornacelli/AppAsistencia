@@ -3,6 +3,7 @@ import { usePersistedState } from '../hooks/usePersistedState'
 import { collection, getDocs } from 'firebase/firestore'
 import { db } from '../firebase'
 import { useAuth } from '../context/AuthContext'
+import { useNavigate } from 'react-router-dom'
 import LoadingSpinner from '../components/ui/LoadingSpinner'
 import EmptyState from '../components/ui/EmptyState'
 import { Cake, WhatsappLogo } from '@phosphor-icons/react'
@@ -11,6 +12,7 @@ import { memberInAnyGroup, memberInGroup } from '../utils/members'
 
 export default function Birthdays() {
   const { profile } = useAuth()
+  const navigate    = useNavigate()
   const isAdmin = profile?.role === 'admin' || profile?.role === 'super_admin'
 
   const [members, setMembers] = useState([])
@@ -116,10 +118,10 @@ export default function Birthdays() {
                 <div className="flex flex-col gap-2">
                   {todayMembers.map(m => (
                     <div key={m.id} className="flex items-center gap-3">
-                      <div className="flex-1 min-w-0">
+                      <button onClick={() => navigate(`/members/${m.id}`)} className="flex-1 min-w-0 text-left">
                         <p className="text-sm font-bold" style={{ color: 'var(--text)' }}>{m.fullName}</p>
                         <p className="text-xs" style={{ color: 'var(--amber)' }}>¡Cumple {m._age ? `${m._age} años` : 'años'}!</p>
-                      </div>
+                      </button>
                       {m.phone && (
                         <a href={`https://wa.me/${m.phone.replace(/\D/g, '')}?text=${encodeURIComponent(`¡Feliz cumpleaños ${m.shortName || m.fullName.split(' ')[0]}! 🎉`)}`}
                           target="_blank" rel="noreferrer"
@@ -153,7 +155,7 @@ export default function Birthdays() {
                           {m.birthDate.slice(8, 10)}
                         </span>
                       </div>
-                      <div className="flex-1 min-w-0">
+                      <button onClick={() => navigate(`/members/${m.id}`)} className="flex-1 min-w-0 text-left">
                         <p className="text-sm font-bold truncate" style={{ color: 'var(--text)' }}>{m.fullName}</p>
                         <p className="text-xs mt-0.5" style={{ color: 'var(--text-2)' }}>
                           {formatBirthday(m.birthDate)}
@@ -167,7 +169,7 @@ export default function Birthdays() {
                                 : null
                           }
                         </p>
-                      </div>
+                      </button>
                       {m.phone && (
                         <a href={`https://wa.me/${m.phone.replace(/\D/g, '')}${m._today ? `?text=${encodeURIComponent(`¡Feliz cumpleaños ${m.shortName || m.fullName.split(' ')[0]}! 🎉`)}` : ''}`}
                           target="_blank" rel="noreferrer"

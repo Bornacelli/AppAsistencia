@@ -230,7 +230,7 @@ export default function Members() {
   }
 
   return (
-    <div className="flex flex-col" style={{ background: 'var(--bg)', minHeight: '100%' }}>
+    <div className="flex flex-col" style={{ background: 'var(--bg)', minHeight: '100%' }}> 
       {/* Header */}
       <div className="sticky top-0 z-10 flex items-center justify-between px-4 py-3"
         style={{ background: 'var(--surface)', borderBottom: '1px solid var(--border)', paddingTop: 'max(12px, env(safe-area-inset-top))' }}>

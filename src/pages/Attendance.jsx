@@ -104,9 +104,11 @@ export default function Attendance() {
       // Also skip members whose joinDate is after the meeting date (they weren't in the group yet).
       const isPast = selDate < todayStr()
       if (isPast && meetingExists) {
+        let autoAbsentAdded = false
         groupMems.forEach(m => {
           if (!(m.id in initAtt) && (!m.joinDate || m.joinDate <= selDate)) {
             initAtt[m.id] = 'absent'
+            autoAbsentAdded = true
           }
         })
         // Remove any records for members who hadn't joined yet (leftover from old data)
@@ -116,6 +118,8 @@ export default function Attendance() {
             delete initAtt[memberId]
           }
         })
+        // Persist auto-absent entries to Firestore so they don't reset on reload
+        if (autoAbsentAdded) doAutoSave(initAtt)
       }
       setAttendance(initAtt)
       setMeetingExists(meetingExists)

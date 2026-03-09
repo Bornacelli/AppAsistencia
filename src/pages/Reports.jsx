@@ -2,6 +2,7 @@ import { useState, useEffect, useMemo } from 'react'
 import { collection, getDocs } from 'firebase/firestore'
 import { db } from '../firebase'
 import { useAuth } from '../context/AuthContext'
+import { useNavigate } from 'react-router-dom'
 import LoadingSpinner from '../components/ui/LoadingSpinner'
 import EmptyState from '../components/ui/EmptyState'
 import {
@@ -17,6 +18,7 @@ import { usePersistedState } from '../hooks/usePersistedState'
 
 export default function Reports() {
   const { profile } = useAuth()
+  const navigate = useNavigate()
   const isLeader = profile?.role === 'leader'
 
   const [records,  setRecords]  = useState([])
@@ -27,7 +29,8 @@ export default function Reports() {
   const [dateFrom,  setDateFrom]  = usePersistedState('rep_from', localDateStr(new Date(Date.now() - 30 * 24 * 60 * 60 * 1000)))
   const [dateTo,    setDateTo]    = usePersistedState('rep_to',   todayStr())
   const [activeTab, setActiveTab] = usePersistedState('rep_tab', 'summary')
-  const [expandedInviters, setExpandedInviters] = useState(new Set())
+  const [expandedInviters,  setExpandedInviters]  = useState(new Set())
+  const [expandedMeetings, setExpandedMeetings] = useState(new Set())
 
   // Listas tab state
   const [listGroup,   setListGroup]   = usePersistedState('rep_list_group', '')
@@ -119,6 +122,17 @@ export default function Reports() {
       .sort((a, b) => b._attendCount - a._attendCount)
   }, [filteredRecords, filteredMembers, groups])
 
+  // New members per meeting date: only those whose joinDate matches the meeting date and are still 'new'
+  const newByMeeting = useMemo(() => {
+    return filteredRecords
+      .map(r => ({
+        id: r.id,
+        date: r.date,
+        members: filteredMembers.filter(m => m.spiritualStatus === 'new' && m.joinDate === r.date),
+      }))
+      .filter(r => r.members.length > 0)
+  }, [filteredRecords, filteredMembers])
+
   // Invitation ranking
   const invitationRanking = useMemo(() => {
     const counts = {}
@@ -177,6 +191,14 @@ export default function Reports() {
 
   function toggleInviter(id) {
     setExpandedInviters(prev => {
+      const next = new Set(prev)
+      next.has(id) ? next.delete(id) : next.add(id)
+      return next
+    })
+  }
+
+  function toggleMeeting(id) {
+    setExpandedMeetings(prev => {
       const next = new Set(prev)
       next.has(id) ? next.delete(id) : next.add(id)
       return next
@@ -341,8 +363,57 @@ export default function Reports() {
                         <span className="text-[10px] font-bold uppercase tracking-wide text-center" style={{ color: 'var(--text-2)' }}>Reuniones</span>
                       </div>
                     </div>
+                    {newByMeeting.length > 0 && (
+                      <>
+                        <p className="text-[11px] font-bold uppercase tracking-widest" style={{ color: 'var(--text-2)' }}>
+                          Nuevos por reunión
+                        </p>
+                        {newByMeeting.map(r => {
+                          const expanded = expandedMeetings.has(r.id)
+                          return (
+                            <div key={r.id} className="rounded-[12px] overflow-hidden"
+                              style={{ background: 'var(--surface)', border: '1px solid var(--border)' }}>
+                              <button type="button" onClick={() => toggleMeeting(r.id)}
+                                className="w-full flex items-center gap-3 px-4 py-3 press text-left">
+                                <div className="flex-1">
+                                  <p className="text-sm font-semibold" style={{ color: 'var(--text)' }}>{formatDateShort(r.date)}</p>
+                                </div>
+                                <div className="flex items-center gap-2 flex-shrink-0">
+                                  <span className="font-syne font-extrabold text-xl" style={{ color: 'var(--amber)' }}>
+                                    {r.members.length} nuevo{r.members.length !== 1 ? 's' : ''}
+                                  </span>
+                                  {expanded
+                                    ? <CaretUp size={14} style={{ color: 'var(--text-3)' }} />
+                                    : <CaretDown size={14} style={{ color: 'var(--text-3)' }} />}
+                                </div>
+                              </button>
+                              {expanded && (
+                                <div style={{ borderTop: '1px solid var(--border)' }}>
+                                  {r.members.map((m, mi) => (
+                                    <button key={m.id} onClick={() => navigate(`/members/${m.id}`)}
+                                      className="w-full flex items-center gap-3 px-4 py-2.5 press text-left"
+                                      style={{ borderTop: mi > 0 ? '1px solid var(--border)' : 'none', background: 'var(--card)' }}>
+                                      <div className="w-1.5 h-1.5 rounded-full flex-shrink-0" style={{ background: 'var(--amber)' }} />
+                                      <span className="flex-1 text-sm font-semibold" style={{ color: 'var(--text)' }}>{m.fullName}</span>
+                                      {m.referredBy && (
+                                        <span className="text-xs flex-shrink-0" style={{ color: 'var(--text-3)' }}>por {m.referredBy}</span>
+                                      )}
+                                    </button>
+                                  ))}
+                                </div>
+                              )}
+                            </div>
+                          )
+                        })}
+                        <div style={{ height: 1, background: 'var(--border)', marginTop: 4, marginBottom: 4 }} />
+                        <p className="text-[11px] font-bold uppercase tracking-widest" style={{ color: 'var(--text-2)' }}>
+                          Lista de nuevos
+                        </p>
+                      </>
+                    )}
                     {newAttendees.map(m => (
-                      <div key={m.id} className="flex items-center gap-3 px-4 py-3 rounded-[12px]"
+                      <button key={m.id} onClick={() => navigate(`/members/${m.id}`)}
+                        className="w-full flex items-center gap-3 px-4 py-3 rounded-[12px] text-left press"
                         style={{ background: 'var(--surface)', border: '1px solid var(--border)' }}>
                         <div className="flex-1 min-w-0">
                           <p className="text-sm font-bold truncate" style={{ color: 'var(--text)' }}>{m.fullName}</p>
@@ -354,12 +425,13 @@ export default function Reports() {
                         </div>
                         {m.phone && (
                           <a href={`https://wa.me/${m.phone.replace(/\D/g,'')}`} target="_blank" rel="noreferrer"
+                            onClick={e => e.stopPropagation()}
                             className="text-xs font-bold px-2 py-1 rounded-[6px]"
                             style={{ background: 'var(--green-bg)', color: 'var(--green)', border: '1px solid var(--green-bdr)', flexShrink: 0 }}>
                             WA
                           </a>
                         )}
-                      </div>
+                      </button>
                     ))}
                     <button
                       onClick={() => {

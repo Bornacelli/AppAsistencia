@@ -10,7 +10,7 @@ import {
   Handshake, Cross, ArrowRight, Cake, Warning,
   UserCircleMinus
 } from '@phosphor-icons/react'
-import { memberInAnyGroup } from '../utils/members'
+import { memberInAnyGroup, memberInGroup } from '../utils/members'
 
 function StatTile({ icon: Icon, value, label, color = 'blue', to }) {
   const navigate = useNavigate()
@@ -118,7 +118,10 @@ export default function Dashboard() {
 
       const last = recent[0]
       const lastPresent = last ? Object.values(last.records || {}).filter(v => v === 'present').length : 0
-      const lastTotal   = last ? members.filter(m => !m.joinDate || m.joinDate <= last.date).length : 0
+      const lastTotal   = last ? members.filter(m =>
+        (!last.groupId || memberInGroup(m, last.groupId)) &&
+        (!m.joinDate || m.joinDate <= last.date)
+      ).length : 0
 
       setStats({ totalMembers: members.length, totalSessions: attDocs.length, lastPresent, lastTotal })
     } catch (e) {
@@ -229,7 +232,10 @@ export default function Dashboard() {
             </div>
             <div className="rounded-[var(--r)] overflow-hidden" style={{ background: 'var(--surface)', border: '1px solid var(--border)' }}>
               {recentRecs.slice(0, 5).map((r, i) => {
-                const eligible = members.filter(m => !m.joinDate || m.joinDate <= r.date)
+                const eligible = members.filter(m =>
+                  (!r.groupId || memberInGroup(m, r.groupId)) &&
+                  (!m.joinDate || m.joinDate <= r.date)
+                )
                 const total   = eligible.length || Object.keys(r.records || {}).length
                 const present = Object.values(r.records || {}).filter(v => v === 'present').length
                 const pct     = total > 0 ? Math.round((present / total) * 100) : 0

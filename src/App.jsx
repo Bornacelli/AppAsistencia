@@ -1,8 +1,11 @@
 import { Routes, Route, Navigate } from 'react-router-dom'
+import { useEffect } from 'react'
+import { onMessage } from 'firebase/messaging'
 import { useAuth } from './context/AuthContext'
 import ProtectedRoute from './components/layout/ProtectedRoute'
 import Toast from './components/ui/Toast'
 import LoadingSpinner from './components/ui/LoadingSpinner'
+import { messaging } from './firebase'
 
 import Login        from './pages/Login'
 //import SetupAdmin   from './pages/SetupAdmin'
@@ -24,6 +27,16 @@ import Profile      from './pages/Profile'
 
 export default function App() {
   const { loading, user, hasUsers } = useAuth()
+
+  // Notificaciones cuando la app está abierta (foreground)
+  useEffect(() => {
+    if (!messaging || Notification.permission !== 'granted') return
+    const unsub = onMessage(messaging, payload => {
+      const { title, body } = payload.notification || {}
+      if (title) new Notification(title, { body, icon: '/pwa-192x192.png' })
+    })
+    return unsub
+  }, [])
 
   if (loading) return <LoadingSpinner fullScreen />
 

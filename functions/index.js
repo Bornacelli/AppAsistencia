@@ -54,11 +54,14 @@ async function removeStaleTokens(db, leaderId, staleTokens) {
 /** Envía una notificación multicast y limpia tokens caducados. */
 async function sendAndClean(fcm, db, leaderId, tokens, message) {
   if (!tokens.length) return
+  console.log(`Enviando noti a líder ${leaderId}, tokens: ${tokens.length}, título: "${message.notification?.title}"`)
   try {
     const result = await fcm.sendEachForMulticast({ ...message, tokens })
+    console.log(`Resultado FCM: ${result.successCount} éxitos, ${result.failureCount} fallos`)
     const stale  = []
     result.responses.forEach((r, i) => {
       if (!r.success) {
+        console.error(`Token[${i}] falló:`, r.error?.code, r.error?.message)
         const code = r.error?.code || ''
         if (code === 'messaging/registration-token-not-registered' ||
             code === 'messaging/invalid-registration-token') {
@@ -80,29 +83,38 @@ export const weeklyNotifications = onSchedule(
     const db  = getFirestore()
     const fcm = getMessaging()
 
+    console.log('=== weeklyNotifications iniciando ===')
+
     // Configuración
-    const cfgSnap     = await db.doc('config/general').get()
+    const cfgSnap      = await db.doc('config/general').get()
     const absenceWeeks = cfgSnap.data()?.absenceAlertWeeks || 2
+    console.log('absenceWeeks:', absenceWeeks)
 
     // Líderes activos con al menos un token FCM
     const leadersSnap = await db.collection('leaders').get()
-    const leaders = leadersSnap.docs
-      .map(d => ({ id: d.id, ...d.data() }))
-      .filter(l => l.active !== false && l.fcmTokens?.length > 0)
+    const allLeaders  = leadersSnap.docs.map(d => ({ id: d.id, ...d.data() }))
+    console.log('líderes totales:', allLeaders.length)
+    const leaders = allLeaders.filter(l => l.active !== false && l.fcmTokens?.length > 0)
+    console.log('líderes con token FCM:', leaders.length, leaders.map(l => ({ id: l.id, role: l.role, tokens: l.fcmTokens?.length })))
 
-    if (!leaders.length) return
+    if (!leaders.length) {
+      console.log('Sin líderes con token, terminando.')
+      return
+    }
 
     // Todos los miembros activos
     const membersSnap = await db.collection('members').get()
     const allMembers  = membersSnap.docs
       .map(d => ({ id: d.id, ...d.data() }))
       .filter(m => m.active !== false)
+    console.log('miembros activos:', allMembers.length)
 
     // Registros de asistencia, ordenados del más reciente al más antiguo
     const attSnap = await db.collection('attendance').get()
     const allAtt  = attSnap.docs
       .map(d => ({ id: d.id, ...d.data() }))
       .sort((a, b) => (b.date || '').localeCompare(a.date || ''))
+    console.log('registros de asistencia:', allAtt.length)
 
     // Rango "esta semana": lunes (hoy) → domingo
     const now    = new Date()
@@ -126,8 +138,11 @@ export const weeklyNotifications = onSchedule(
         ? allAtt
         : allAtt.filter(r => gids.includes(r.groupId))
 
+      console.log(`Líder ${leader.id} (${leader.role}): ${members.length} miembros, rango cumpleaños ${monday.toISOString().slice(0,10)} – ${sunday.toISOString().slice(0,10)}`)
+
       // ── Ausencias ──────────────────────────────────────────────────────────
       const absentCount = members.filter(m => hasConsecutiveAbsences(m, att, absenceWeeks)).length
+      console.log(`  ausentes consecutivos: ${absentCount}`)
 
       if (absentCount > 0) {
         const plural = absentCount > 1
@@ -143,6 +158,7 @@ export const weeklyNotifications = onSchedule(
 
       // ── Cumpleaños esta semana ─────────────────────────────────────────────
       const bdayMembers = members.filter(m => hasBirthdayThisWeek(m.birthDate, monday, sunday))
+      console.log(`  cumpleaños esta semana: ${bdayMembers.length}`, bdayMembers.map(m => ({ name: m.fullName, bd: m.birthDate })))
 
       if (bdayMembers.length > 0) {
         const body = bdayMembers.length <= 4

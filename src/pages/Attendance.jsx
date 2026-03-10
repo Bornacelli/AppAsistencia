@@ -293,7 +293,7 @@ export default function Attendance() {
         <button onClick={() => navigate(`/members/${m.id}`)} className="flex items-center gap-3 flex-1 min-w-0 text-left">
         <Avatar name={m.fullName} size={40} status={st} />
         <div className="min-w-0">
-          <p className="text-sm font-bold truncate" style={{ color: 'var(--text)' }}>{m.fullName}</p>
+          <p className="text-sm font-bold truncate" style={{ color: 'var(--text)' }}>{m.fullName?.toUpperCase()}</p>
           <div className="flex items-center gap-1.5 flex-wrap mt-0.5">
             {m.spiritualStatus === 'new' && (
               <span className="text-[9px] font-extrabold uppercase tracking-[0.8px] px-1.5 py-0.5 rounded-[4px]"

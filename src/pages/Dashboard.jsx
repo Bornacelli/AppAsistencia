@@ -205,7 +205,7 @@ export default function Dashboard() {
                     style={{ background: bg, border: `1px solid ${color}33` }}>
                     <Icon size={16} style={{ color, flexShrink: 0 }} />
                     <div className="flex-1 min-w-0">
-                      <p className="text-xs font-bold truncate" style={{ color }}>{a.name}</p>
+                      <p className="text-xs font-bold truncate" style={{ color }}>{a.name?.toUpperCase()}</p>
                       <p className="text-[11px] font-medium mt-0.5 truncate" style={{ color, opacity: 0.8 }}>{a.label}</p>
                     </div>
                     <ArrowRight size={14} style={{ color, flexShrink: 0, opacity: 0.6 }} />

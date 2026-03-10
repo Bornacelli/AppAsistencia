@@ -78,7 +78,7 @@ export default function Alerts() {
                       <div key={i} className="flex items-center gap-3 px-4 py-3 rounded-[12px]"
                         style={{ background: cfg.bg, border: `1px solid ${cfg.bdr}` }}>
                         <div className="flex-1 min-w-0">
-                          <p className="text-sm font-bold" style={{ color: 'var(--text)' }}>{a.name}</p>
+                          <p className="text-sm font-bold" style={{ color: 'var(--text)' }}>{a.name?.toUpperCase()}</p>
                           <p className="text-xs mt-0.5" style={{ color: cfg.color }}>{a.label}</p>
                         </div>
                         {a.phone && (

@@ -8,6 +8,9 @@ export default defineConfig({
     VitePWA({
       registerType: 'autoUpdate',
       includeAssets: ['favicon.png', 'apple-touch-icon.png'],
+      workbox: {
+        globIgnores: ['**/firebase-messaging-sw.js'],
+      },
       manifest: {
         name: 'Control de Asistencia CIC',
         short_name: 'Asistencia CIC',

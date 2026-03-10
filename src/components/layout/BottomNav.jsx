@@ -1,4 +1,4 @@
-import { House, ClipboardText, Users, Bell, DotsThreeOutline, ChartBar, Gear, UserCircle, CalendarBlank, Cake, Warning } from '@phosphor-icons/react'
+import { House, ClipboardText, Users, Bell, DotsThreeOutline, ChartBar, Gear, UserCircle, CalendarBlank, Cake, Warning, IdentificationCard } from '@phosphor-icons/react'
 import { NavLink, useNavigate } from 'react-router-dom'
 import { useState } from 'react'
 import { signOut } from 'firebase/auth'
@@ -133,6 +133,7 @@ export default function BottomNav() {
               {isAdmin               && <MoreItem icon={UserCircle} label="Líderes"       to="/leaders"  onClose={closeDrawer} />}
               {(isAdmin || isLeader) && <MoreItem icon={ChartBar}   label="Reportes"      to="/reports"  onClose={closeDrawer} />}
               {isAdmin               && <MoreItem icon={Gear}       label="Configuración" to="/settings" onClose={closeDrawer} />}
+              <MoreItem icon={IdentificationCard} label="Mi perfil" to="/profile" onClose={closeDrawer} />
 
               <div className="my-2" style={{ borderTop: '1px solid var(--border)' }} />
 

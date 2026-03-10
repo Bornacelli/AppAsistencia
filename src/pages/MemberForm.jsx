@@ -56,7 +56,7 @@ function MemberCombobox({ label, members, selectedId, legacyText, onSelect, excl
         <div className="flex items-center gap-2 px-3 py-2.5 rounded-[10px]"
           style={{ background: 'var(--surface)', border: '1px solid var(--border)' }}>
           <span className="flex-1 text-sm font-medium" style={{ color: 'var(--text)' }}>
-            {selectedMember.fullName}
+            {selectedMember.fullName?.toUpperCase()}
             {selectedMember.shortName && (
               <span className="ml-1.5 text-xs" style={{ color: 'var(--text-2)' }}>
                 ({selectedMember.shortName})
@@ -96,7 +96,7 @@ function MemberCombobox({ label, members, selectedId, legacyText, onSelect, excl
                     color: 'var(--text)',
                     borderBottom: i < filtered.length - 1 ? '1px solid var(--border)' : 'none',
                   }}>
-                  {m.fullName}
+                  {m.fullName?.toUpperCase()}
                   {m.shortName && (
                     <span className="ml-1.5 text-xs" style={{ color: 'var(--text-2)' }}>({m.shortName})</span>
                   )}

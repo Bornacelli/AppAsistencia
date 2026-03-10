@@ -74,7 +74,7 @@ export default function MemberProfile() {
   return (
     <div className="flex flex-col" style={{ background: 'var(--bg)', minHeight: '100%' }}>
       <TopBar
-        title={member.fullName}
+        title={member.fullName?.toUpperCase()}
         actions={
           <button onClick={() => navigate(`/members/${id}/edit`)}
             className="w-9 h-9 flex items-center justify-center rounded-[10px] press"
@@ -87,7 +87,7 @@ export default function MemberProfile() {
       <div className="px-4 py-6 flex flex-col items-center gap-2 text-center"
         style={{ background: 'var(--surface)', borderBottom: '1px solid var(--border)' }}>
         <Avatar name={member.fullName} size={72} />
-        <h2 className="font-syne font-extrabold text-xl mt-2" style={{ color: 'var(--text)' }}>{member.fullName}</h2>
+        <h2 className="font-syne font-extrabold text-xl mt-2" style={{ color: 'var(--text)' }}>{member.fullName?.toUpperCase()}</h2>
         {member.shortName && <p className="text-sm" style={{ color: 'var(--text-2)' }}>{member.shortName}</p>}
         <div className="flex items-center gap-2 flex-wrap justify-center">
           {member.spiritualStatus && (

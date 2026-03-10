@@ -362,7 +362,7 @@ export default function Members() {
                   <Avatar name={p.fullName} size={44} />
                 )}
                 <div className="flex-1 min-w-0">
-                  <p className="text-sm font-bold truncate" style={{ color: 'var(--text)' }}>{p.fullName}</p>
+                  <p className="text-sm font-bold truncate" style={{ color: 'var(--text)' }}>{p.fullName?.toUpperCase()}</p>
                   <div className="flex items-center gap-2 mt-0.5 flex-wrap">
                     {p.spiritualStatus && (
                       <span className="text-[10px] font-bold"

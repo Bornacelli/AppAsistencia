@@ -20,6 +20,7 @@ import Settings     from './pages/Settings'
 import Meetings     from './pages/Meetings'
 import Birthdays    from './pages/Birthdays'
 import Absences     from './pages/Absences'
+import Profile      from './pages/Profile'
 
 export default function App() {
   const { loading, user, hasUsers } = useAuth()
@@ -82,6 +83,10 @@ export default function App() {
         } />
         <Route path="/settings" element={
           <ProtectedRoute roles={['super_admin', 'admin']}><Settings /></ProtectedRoute>
+        } />
+
+        <Route path="/profile" element={
+          <ProtectedRoute><Profile /></ProtectedRoute>
         } />
 
         <Route path="*" element={<Navigate to="/" replace />} />

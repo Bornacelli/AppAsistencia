@@ -152,7 +152,7 @@ export default function Absences() {
 
                   {/* Info — tappable to go to profile */}
                   <button onClick={() => navigate(`/members/${m.id}`)} className="flex-1 min-w-0 text-left">
-                    <p className="text-sm font-bold truncate" style={{ color: 'var(--text)' }}>{m.fullName}</p>
+                    <p className="text-sm font-bold truncate" style={{ color: 'var(--text)' }}>{m.fullName?.toUpperCase()}</p>
                     <p className="text-xs mt-0.5" style={{ color: 'var(--red)' }}>
                       {streak === 1 ? 'Última reunión ausente' : `${streak} reuniones seguidas sin asistir`}
                     </p>

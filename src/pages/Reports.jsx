@@ -394,7 +394,7 @@ export default function Reports() {
                                       className="w-full flex items-center gap-3 px-4 py-2.5 press text-left"
                                       style={{ borderTop: mi > 0 ? '1px solid var(--border)' : 'none', background: 'var(--card)' }}>
                                       <div className="w-1.5 h-1.5 rounded-full flex-shrink-0" style={{ background: 'var(--amber)' }} />
-                                      <span className="flex-1 text-sm font-semibold" style={{ color: 'var(--text)' }}>{m.fullName}</span>
+                                      <span className="flex-1 text-sm font-semibold" style={{ color: 'var(--text)' }}>{m.fullName?.toUpperCase()}</span>
                                       {m.referredBy && (
                                         <span className="text-xs flex-shrink-0" style={{ color: 'var(--text-3)' }}>por {m.referredBy}</span>
                                       )}
@@ -416,7 +416,7 @@ export default function Reports() {
                         className="w-full flex items-center gap-3 px-4 py-3 rounded-[12px] text-left press"
                         style={{ background: 'var(--surface)', border: '1px solid var(--border)' }}>
                         <div className="flex-1 min-w-0">
-                          <p className="text-sm font-bold truncate" style={{ color: 'var(--text)' }}>{m.fullName}</p>
+                          <p className="text-sm font-bold truncate" style={{ color: 'var(--text)' }}>{m.fullName?.toUpperCase()}</p>
                           <p className="text-xs mt-0.5" style={{ color: 'var(--text-2)' }}>
                             {m._groupName && <span>{m._groupName} · </span>}
                             {m.referredBy && <span>Invitado por: {m.referredBy} · </span>}
@@ -495,7 +495,7 @@ export default function Reports() {
                             <span className="text-sm font-bold w-6 text-center flex-shrink-0"
                               style={{ color: 'var(--text-3)' }}>{medal}</span>
                             <div className="flex-1 min-w-0">
-                              <p className="text-sm font-bold truncate" style={{ color: 'var(--text)' }}>{r.name}</p>
+                              <p className="text-sm font-bold truncate" style={{ color: 'var(--text)' }}>{r.name?.toUpperCase()}</p>
                               <p className="text-xs" style={{ color: 'var(--text-2)' }}>
                                 {r.count} persona{r.count !== 1 ? 's' : ''} invitada{r.count !== 1 ? 's' : ''}
                               </p>
@@ -522,7 +522,7 @@ export default function Reports() {
                                   }}>
                                   <div className="w-1.5 h-1.5 rounded-full flex-shrink-0"
                                     style={{ background: 'var(--accent)' }} />
-                                  <span className="flex-1 text-sm" style={{ color: 'var(--text)' }}>{m.fullName}</span>
+                                  <span className="flex-1 text-sm" style={{ color: 'var(--text)' }}>{m.fullName?.toUpperCase()}</span>
                                   {m.joinDate && (
                                     <span className="text-xs" style={{ color: 'var(--text-3)' }}>{m.joinDate}</span>
                                   )}

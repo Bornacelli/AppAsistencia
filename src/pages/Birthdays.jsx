@@ -119,7 +119,7 @@ export default function Birthdays() {
                   {todayMembers.map(m => (
                     <div key={m.id} className="flex items-center gap-3">
                       <button onClick={() => navigate(`/members/${m.id}`)} className="flex-1 min-w-0 text-left">
-                        <p className="text-sm font-bold" style={{ color: 'var(--text)' }}>{m.fullName}</p>
+                        <p className="text-sm font-bold" style={{ color: 'var(--text)' }}>{m.fullName?.toUpperCase()}</p>
                         <p className="text-xs" style={{ color: 'var(--amber)' }}>¡Cumple {m._age ? `${m._age} años` : 'años'}!</p>
                       </button>
                       {m.phone && (
@@ -156,7 +156,7 @@ export default function Birthdays() {
                         </span>
                       </div>
                       <button onClick={() => navigate(`/members/${m.id}`)} className="flex-1 min-w-0 text-left">
-                        <p className="text-sm font-bold truncate" style={{ color: 'var(--text)' }}>{m.fullName}</p>
+                        <p className="text-sm font-bold truncate" style={{ color: 'var(--text)' }}>{m.fullName?.toUpperCase()}</p>
                         <p className="text-xs mt-0.5" style={{ color: 'var(--text-2)' }}>
                           {formatBirthday(m.birthDate)}
                           {m._age !== null && ` · ${m._age} años`}

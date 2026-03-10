@@ -34,17 +34,19 @@ self.addEventListener('push', event => {
 
 self.addEventListener('notificationclick', event => {
   event.notification.close()
-  const url = event.notification.data?.url || '/'
+  const path    = event.notification.data?.url || '/'
+  const fullUrl = self.location.origin + path
+
   event.waitUntil(
     clients.matchAll({ type: 'window', includeUncontrolled: true }).then(list => {
       for (const client of list) {
         if ('focus' in client) {
-          client.focus()
-          if ('navigate' in client) client.navigate(url)
-          return
+          return client.focus().then(c => {
+            if (c && 'navigate' in c) return c.navigate(fullUrl)
+          })
         }
       }
-      return clients.openWindow(url)
+      return clients.openWindow(fullUrl)
     })
   )
 })

@@ -13,7 +13,7 @@ async function getFcmRegistration() {
 export function useNotifications() {
   const { user, profile, refreshProfile } = useAuth()
 
-  const [permission,    setPermission]    = useState(() =>
+  const [permission,   setPermission]  = useState(() =>
     typeof Notification !== 'undefined' ? Notification.permission : 'denied'
   )
   const [currentToken, setCurrentToken] = useState(null)
@@ -24,7 +24,6 @@ export function useNotifications() {
     'serviceWorker' in navigator &&
     !!messaging
 
-  // Si ya hay permiso, recuperar el token actual del dispositivo
   useEffect(() => {
     if (!isSupported || Notification.permission !== 'granted') return
     let cancelled = false
@@ -35,7 +34,6 @@ export function useNotifications() {
     return () => { cancelled = true }
   }, [isSupported])
 
-  // ¿El token actual está guardado en el perfil? → notis activas
   const isActive = !!currentToken && (profile?.fcmTokens || []).includes(currentToken)
 
   const enable = useCallback(async () => {
@@ -47,14 +45,10 @@ export function useNotifications() {
       if (perm !== 'granted') return
       const reg = await getFcmRegistration()
       const tok = await getToken(messaging, { vapidKey: VAPID_KEY, serviceWorkerRegistration: reg })
-      console.log('[NOTIF] token generado:', tok)
       if (tok) {
         setCurrentToken(tok)
         await updateDoc(doc(db, 'leaders', user.uid), { fcmTokens: arrayUnion(tok) })
         await refreshProfile()
-        console.log('[NOTIF] token guardado en Firestore ✅')
-      } else {
-        console.warn('[NOTIF] getToken devolvió null/vacío')
       }
     } catch (e) {
       console.error('Error al activar notificaciones:', e)

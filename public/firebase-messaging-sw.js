@@ -5,16 +5,12 @@ self.addEventListener('push', event => {
   let raw = {}
   try { raw = event.data?.json() ?? {} } catch {}
 
-  // FCM envuelve los datos en { data: { ... } } — desempaquetar si es necesario
   const payload = (raw.data && typeof raw.data === 'object') ? raw.data : raw
-
   const title = payload.title || 'Asistencia CIC'
   const body  = payload.body  || ''
   const url   = payload.url   || '/'
   const tag   = payload.tag   || 'cic'
 
-  // Siempre mostrar notificación del sistema (Chrome lo exige para cada push).
-  // Además, notificar a las pestañas abiertas via postMessage.
   event.waitUntil(
     Promise.all([
       self.registration.showNotification(title, {
@@ -34,8 +30,7 @@ self.addEventListener('push', event => {
 
 self.addEventListener('notificationclick', event => {
   event.notification.close()
-  const path    = event.notification.data?.url || '/'
-  const fullUrl = self.location.origin + path
+  const fullUrl = self.location.origin + (event.notification.data?.url || '/')
 
   event.waitUntil(
     clients.matchAll({ type: 'window', includeUncontrolled: true }).then(list => {

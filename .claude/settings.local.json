@@ -5,7 +5,8 @@
       "Bash(cd /c/Users/agm/Documents/pruebaAsistencia && npm run build 2>&1)",
       "Bash(cd:*)",
       "Bash(file:*)",
-      "Bash(cd \"C:\\\\Users\\\\agm\\\\Documents\\\\Desarrollos\\\\Asistencia CIC\" && firebase deploy --only functions 2>&1)"
+      "Bash(cd \"C:\\\\Users\\\\agm\\\\Documents\\\\Desarrollos\\\\Asistencia CIC\" && firebase deploy --only functions 2>&1)",
+      "Bash(cd \"C:\\\\Users\\\\agm\\\\Documents\\\\Desarrollos\\\\Asistencia CIC\" && firebase functions:delete testPush --region us-central1 --force 2>&1)"
     ]
   }
 }

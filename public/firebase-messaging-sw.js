@@ -1,32 +1,36 @@
-importScripts('https://www.gstatic.com/firebasejs/10.7.1/firebase-app-compat.js')
-importScripts('https://www.gstatic.com/firebasejs/10.7.1/firebase-messaging-compat.js')
+// Maneja push notifications directamente sin depender del SDK de Firebase
 
-firebase.initializeApp({
-  apiKey:            'AIzaSyCsCvRBu4GoerOfxZjRrg2BocgusGfN69E',
-  authDomain:        'app-asistencia-26cda.firebaseapp.com',
-  projectId:         'app-asistencia-26cda',
-  storageBucket:     'app-asistencia-26cda.firebasestorage.app',
-  messagingSenderId: '586913678849',
-  appId:             '1:586913678849:web:ff06cb7d0e2902a382a200',
-})
+self.addEventListener('push', event => {
+  let payload = {}
+  try { payload = event.data?.json() ?? {} } catch {}
 
-const messaging = firebase.messaging()
-
-// Notificaciones en background (app cerrada o en segundo plano)
-messaging.onBackgroundMessage(payload => {
   const notification = payload.notification || {}
   const data         = payload.data         || {}
-  self.registration.showNotification(notification.title || 'Asistencia CIC', {
-    body:    notification.body,
-    icon:    '/pwa-192x192.png',
-    badge:   '/favicon.png',
-    data,
-    tag:     data.tag || 'cic',
-    renotify: true,
-  })
+
+  event.waitUntil(
+    clients.matchAll({ type: 'window', includeUncontrolled: true }).then(clientList => {
+      const hasForeground = clientList.some(c => c.visibilityState === 'visible')
+
+      if (hasForeground) {
+        // App abierta → reenviar al foreground para que lo maneje
+        clientList.forEach(c => c.postMessage({ type: 'FCM_MESSAGE', notification, data }))
+        return
+      }
+
+      // App cerrada/minimizada → mostrar notificación del sistema
+      return self.registration.showNotification(notification.title || 'Asistencia CIC', {
+        body:     notification.body,
+        icon:     '/pwa-192x192.png',
+        badge:    '/favicon.png',
+        data,
+        tag:      data.tag || 'cic',
+        renotify: true,
+      })
+    })
+  )
 })
 
-// Al tocar la notificación, abre la app en la ruta correspondiente
+// Al tocar la notificación → abre la app en la ruta correcta
 self.addEventListener('notificationclick', event => {
   event.notification.close()
   const url = event.notification.data?.url || '/'

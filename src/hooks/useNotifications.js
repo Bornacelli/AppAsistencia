@@ -47,10 +47,14 @@ export function useNotifications() {
       if (perm !== 'granted') return
       const reg = await getFcmRegistration()
       const tok = await getToken(messaging, { vapidKey: VAPID_KEY, serviceWorkerRegistration: reg })
+      console.log('[NOTIF] token generado:', tok)
       if (tok) {
         setCurrentToken(tok)
         await updateDoc(doc(db, 'leaders', user.uid), { fcmTokens: arrayUnion(tok) })
         await refreshProfile()
+        console.log('[NOTIF] token guardado en Firestore ✅')
+      } else {
+        console.warn('[NOTIF] getToken devolvió null/vacío')
       }
     } catch (e) {
       console.error('Error al activar notificaciones:', e)

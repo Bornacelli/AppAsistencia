@@ -1,36 +1,37 @@
-// Maneja push notifications directamente sin depender del SDK de Firebase
+self.addEventListener('install',  () => self.skipWaiting())
+self.addEventListener('activate', event => event.waitUntil(clients.claim()))
 
 self.addEventListener('push', event => {
-  let payload = {}
-  try { payload = event.data?.json() ?? {} } catch {}
+  let raw = {}
+  try { raw = event.data?.json() ?? {} } catch {}
 
-  const notification = payload.notification || {}
-  const data         = payload.data         || {}
+  // FCM envuelve los datos en { data: { ... } } — desempaquetar si es necesario
+  const payload = (raw.data && typeof raw.data === 'object') ? raw.data : raw
 
+  const title = payload.title || 'Asistencia CIC'
+  const body  = payload.body  || ''
+  const url   = payload.url   || '/'
+  const tag   = payload.tag   || 'cic'
+
+  // Siempre mostrar notificación del sistema (Chrome lo exige para cada push).
+  // Además, notificar a las pestañas abiertas via postMessage.
   event.waitUntil(
-    clients.matchAll({ type: 'window', includeUncontrolled: true }).then(clientList => {
-      const hasForeground = clientList.some(c => c.visibilityState === 'visible')
-
-      if (hasForeground) {
-        // App abierta → reenviar al foreground para que lo maneje
-        clientList.forEach(c => c.postMessage({ type: 'FCM_MESSAGE', notification, data }))
-        return
-      }
-
-      // App cerrada/minimizada → mostrar notificación del sistema
-      return self.registration.showNotification(notification.title || 'Asistencia CIC', {
-        body:     notification.body,
+    Promise.all([
+      self.registration.showNotification(title, {
+        body,
         icon:     '/pwa-192x192.png',
         badge:    '/favicon.png',
-        data,
-        tag:      data.tag || 'cic',
+        data:     { url, tag },
+        tag,
         renotify: true,
-      })
-    })
+      }),
+      clients.matchAll({ type: 'window', includeUncontrolled: true }).then(clientList => {
+        clientList.forEach(c => c.postMessage({ type: 'FCM_MESSAGE', title, body, url, tag }))
+      }),
+    ])
   )
 })
 
-// Al tocar la notificación → abre la app en la ruta correcta
 self.addEventListener('notificationclick', event => {
   event.notification.close()
   const url = event.notification.data?.url || '/'

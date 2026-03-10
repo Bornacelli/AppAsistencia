@@ -1,4 +1,5 @@
 import { onSchedule }   from 'firebase-functions/v2/scheduler'
+import { onRequest }     from 'firebase-functions/v2/https'
 import { initializeApp } from 'firebase-admin/app'
 import { getFirestore, FieldValue } from 'firebase-admin/firestore'
 import { getMessaging }  from 'firebase-admin/messaging'
@@ -54,7 +55,7 @@ async function removeStaleTokens(db, leaderId, staleTokens) {
 /** Envía una notificación multicast y limpia tokens caducados. */
 async function sendAndClean(fcm, db, leaderId, tokens, message) {
   if (!tokens.length) return
-  console.log(`Enviando noti a líder ${leaderId}, tokens: ${tokens.length}, título: "${message.notification?.title}"`)
+  console.log(`Enviando noti a líder ${leaderId}, tokens: ${tokens.length}, título: "${message.data?.title}"`)
   try {
     const result = await fcm.sendEachForMulticast({ ...message, tokens })
     console.log(`Resultado FCM: ${result.successCount} éxitos, ${result.failureCount} fallos`)
@@ -146,13 +147,13 @@ export const weeklyNotifications = onSchedule(
 
       if (absentCount > 0) {
         const plural = absentCount > 1
+        const body   = `${absentCount} persona${plural ? 's llevan' : ' lleva'} ${absenceWeeks} `
+                     + `reunión${absenceWeeks > 1 ? 'es' : ''} consecutiva${absenceWeeks > 1 ? 's' : ''} sin asistir`
         await sendAndClean(fcm, db, leader.id, leader.fcmTokens, {
-          notification: {
-            title: '⚠️ Inasistencias',
-            body:  `${absentCount} persona${plural ? 's llevan' : ' lleva'} ${absenceWeeks} `
-                 + `reunión${absenceWeeks > 1 ? 'es' : ''} consecutiva${absenceWeeks > 1 ? 's' : ''} sin asistir`,
+          webpush: {
+            headers: { Urgency: 'high' },
+            data: { title: '⚠️ Inasistencias', body, url: '/absences', tag: 'absences' },
           },
-          data: { url: '/absences', tag: 'absences' },
         })
       }
 
@@ -161,18 +162,52 @@ export const weeklyNotifications = onSchedule(
       console.log(`  cumpleaños esta semana: ${bdayMembers.length}`, bdayMembers.map(m => ({ name: m.fullName, bd: m.birthDate })))
 
       if (bdayMembers.length > 0) {
-        const body = bdayMembers.length <= 4
+        const bdayBody = bdayMembers.length <= 4
           ? `Esta semana cumplen años: ${bdayMembers.map(m => m.fullName).join(', ')}`
           : `${bdayMembers.length} personas cumplen años esta semana`
 
         await sendAndClean(fcm, db, leader.id, leader.fcmTokens, {
-          notification: {
-            title: '🎂 Cumpleaños esta semana',
-            body,
+          webpush: {
+            headers: { Urgency: 'high' },
+            data: { title: '🎂 Cumpleaños esta semana', body: bdayBody, url: '/birthdays', tag: 'birthdays' },
           },
-          data: { url: '/birthdays', tag: 'birthdays' },
         })
       }
     }
   }
 )
+
+// ─── HTTP de prueba: envía push a todos los tokens guardados ─────────────────
+// Llamar desde el navegador: https://<region>-<project>.cloudfunctions.net/testPush
+export const testPush = onRequest({ cors: true }, async (req, res) => {
+  const db  = getFirestore()
+  const fcm = getMessaging()
+
+  const snap    = await db.collection('leaders').get()
+  const leaders = snap.docs.map(d => ({ id: d.id, ...d.data() }))
+  const tokens  = leaders.flatMap(l => l.fcmTokens || [])
+
+  if (!tokens.length) {
+    res.json({ error: 'Sin tokens FCM en Firestore' })
+    return
+  }
+
+  const result = await fcm.sendEachForMulticast({
+    tokens,
+    webpush: {
+      headers: { Urgency: 'high' },
+      data: { title: '🔔 Test Push', body: 'Si ves esto, FCM funciona ✅', url: '/', tag: 'test' },
+    },
+  })
+
+  res.json({
+    tokens: tokens.length,
+    success: result.successCount,
+    failure: result.failureCount,
+    details: result.responses.map((r, i) => ({
+      token:   tokens[i].slice(0, 30) + '...',
+      success: r.success,
+      error:   r.error?.code ?? null,
+    })),
+  })
+})

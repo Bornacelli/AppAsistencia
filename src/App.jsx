@@ -1,8 +1,9 @@
 import { Routes, Route, Navigate } from 'react-router-dom'
-import { useEffect } from 'react'
+import { useEffect, useState } from 'react'
 import { useAuth } from './context/AuthContext'
 import ProtectedRoute from './components/layout/ProtectedRoute'
 import Toast from './components/ui/Toast'
+import PushBanner from './components/ui/PushBanner'
 import LoadingSpinner from './components/ui/LoadingSpinner'
 
 import Login        from './pages/Login'
@@ -25,16 +26,15 @@ import Profile      from './pages/Profile'
 
 export default function App() {
   const { loading, user, hasUsers } = useAuth()
+  const [pushNotif, setPushNotif] = useState(null)
 
-  // Notificaciones foreground: el SW reenvía el mensaje cuando la app está abierta
+  // Notificaciones foreground: el SW reenvía el push cuando la app está abierta
   useEffect(() => {
     if (!('serviceWorker' in navigator)) return
-    const handler = async event => {
+    const handler = event => {
       if (event.data?.type !== 'FCM_MESSAGE') return
-      const { title, body } = event.data.notification || {}
-      if (!title || Notification.permission !== 'granted') return
-      const reg = await navigator.serviceWorker.ready
-      reg.showNotification(title, { body, icon: '/pwa-192x192.png' })
+      const { title, body, url } = event.data
+      if (title) setPushNotif({ title, body, url })
     }
     navigator.serviceWorker.addEventListener('message', handler)
     return () => navigator.serviceWorker.removeEventListener('message', handler)
@@ -45,6 +45,7 @@ export default function App() {
   return (
     <>
       <Toast />
+      <PushBanner notif={pushNotif} onClose={() => setPushNotif(null)} />
       <Routes>
         {/* Public */}
         <Route

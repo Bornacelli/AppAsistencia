@@ -10,7 +10,7 @@ import {
   Handshake, Cross, ArrowRight, Cake, Warning,
   UserCircleMinus
 } from '@phosphor-icons/react'
-import { memberInAnyGroup, memberInGroup } from '../utils/members'
+import { memberInAnyGroup, meetingStats } from '../utils/members'
 
 function StatTile({ icon: Icon, value, label, color = 'blue', to }) {
   const navigate = useNavigate()
@@ -117,13 +117,9 @@ export default function Dashboard() {
       setRecentRecs(recent)
 
       const last = recent[0]
-      const lastPresent = last ? Object.values(last.records || {}).filter(v => v === 'present').length : 0
-      const lastTotal   = last ? members.filter(m =>
-        (!last.groupId || memberInGroup(m, last.groupId)) &&
-        (!m.joinDate || m.joinDate <= last.date)
-      ).length : 0
+      const { present: lastPresent, total: lastTotal } = last ? meetingStats(last, members) : { present: 0, total: 0 }
 
-      setStats({ totalMembers: members.length, totalSessions: attDocs.length, lastPresent, lastTotal })
+      setStats({ totalMembers: members.filter(m => m.active !== false).length, totalSessions: attDocs.length, lastPresent, lastTotal })
     } catch (e) {
       console.error(e)
     } finally {
@@ -232,14 +228,8 @@ export default function Dashboard() {
             </div>
             <div className="rounded-[var(--r)] overflow-hidden" style={{ background: 'var(--surface)', border: '1px solid var(--border)' }}>
               {recentRecs.slice(0, 5).map((r, i) => {
-                const eligible = members.filter(m =>
-                  (!r.groupId || memberInGroup(m, r.groupId)) &&
-                  (!m.joinDate || m.joinDate <= r.date)
-                )
-                const total   = eligible.length || Object.keys(r.records || {}).length
-                const present = Object.values(r.records || {}).filter(v => v === 'present').length
-                const pct     = total > 0 ? Math.round((present / total) * 100) : 0
-                const color   = pct >= 70 ? 'var(--green)' : pct >= 40 ? 'var(--amber)' : 'var(--red)'
+                const { total, present, pct } = meetingStats(r, members)
+                const color = pct >= 70 ? 'var(--green)' : pct >= 40 ? 'var(--amber)' : 'var(--red)'
                 const d       = r.date ? new Date(r.date + 'T12:00:00') : new Date()
                 const lbl     = d.toLocaleDateString('es-ES', { weekday: 'short', day: 'numeric', month: 'short' })
                 return (

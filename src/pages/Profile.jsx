@@ -3,7 +3,7 @@ import TopBar from '../components/layout/TopBar'
 import Avatar from '../components/ui/Avatar'
 import LoadingSpinner from '../components/ui/LoadingSpinner'
 import { useNotifications } from '../hooks/useNotifications'
-import { Bell, BellSlash, Warning } from '@phosphor-icons/react'
+import { Bell, BellSlash } from '@phosphor-icons/react'
 
 const ROLE_LABEL = {
   super_admin: 'Super Administrador',
@@ -57,7 +57,6 @@ export default function Profile() {
 
           ) : permission === 'denied' ? (
             <div className="flex items-start gap-3 px-4 pb-4">
-              <Warning size={18} weight="fill" style={{ color: 'var(--amber)', flexShrink: 0, marginTop: 2 }} />
               <div>
                 <p className="text-sm font-semibold" style={{ color: 'var(--text)' }}>Notificaciones bloqueadas</p>
                 <p className="text-xs mt-1 leading-relaxed" style={{ color: 'var(--text-2)' }}>

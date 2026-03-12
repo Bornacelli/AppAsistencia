@@ -64,9 +64,8 @@ export default function MemberProfile() {
   )
   if (!member) return null
 
-  const present = history.filter(h => h.status === 'present').length
-  const late    = history.filter(h => h.status === 'late').length
-  const pct     = history.length > 0 ? Math.round(((present + late) / history.length) * 100) : 0
+  const present  = history.filter(h => h.status === 'present' || h.status === 'late').length
+  const pct      = history.length > 0 ? Math.round((present / history.length) * 100) : 0
   const pctColor = pct >= 70 ? 'var(--green)' : pct >= 40 ? 'var(--amber)' : 'var(--red)'
   const statusIcon = { present: CheckCircle, absent: XCircle, late: CheckCircle }
   const statusColor = { present: 'var(--green)', absent: 'var(--red)', late: 'var(--green)' }
@@ -88,7 +87,6 @@ export default function MemberProfile() {
         style={{ background: 'var(--surface)', borderBottom: '1px solid var(--border)' }}>
         <Avatar name={member.fullName} size={72} />
         <h2 className="font-syne font-extrabold text-xl mt-2" style={{ color: 'var(--text)' }}>{member.fullName?.toUpperCase()}</h2>
-        {member.shortName && <p className="text-sm" style={{ color: 'var(--text-2)' }}>{member.shortName}</p>}
         <div className="flex items-center gap-2 flex-wrap justify-center">
           {member.spiritualStatus && (
             <span className="text-[11px] font-bold px-2.5 py-1 rounded-full"
@@ -109,8 +107,8 @@ export default function MemberProfile() {
         {/* Stats */}
         <div className="grid grid-cols-3 gap-3">
           {[
-            { label: 'Asistencias', value: present + late, color: 'var(--green)' },
-            { label: 'Ausencias',   value: history.length - present - late, color: 'var(--red)' },
+            { label: 'Asistencias', value: present, color: 'var(--green)' },
+            { label: 'Ausencias',   value: history.length - present, color: 'var(--red)' },
             { label: '% Asist.',    value: `${pct}%`, color: pctColor },
           ].map(s => (
             <div key={s.label} className="flex flex-col items-center gap-1 p-3 rounded-[12px]"

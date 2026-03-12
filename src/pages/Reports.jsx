@@ -6,14 +6,13 @@ import { useNavigate } from 'react-router-dom'
 import LoadingSpinner from '../components/ui/LoadingSpinner'
 import EmptyState from '../components/ui/EmptyState'
 import {
-  DownloadSimple, ChartBar, Users, Trophy, Star, ListBullets, HandHeart, CaretDown, CaretUp
+  DownloadSimple, ChartBar, Users, Trophy, Star, ListBullets, HandHeart, CaretDown, CaretUp, ArrowClockwise
 } from '@phosphor-icons/react'
 import {
-  exportAttendanceReport,
   exportRankingReport, exportMembersList, exportMeetingAttendeesList, exportInvitationRanking
 } from '../utils/excel'
 import { localDateStr, todayStr, formatDateShort } from '../utils/dates'
-import { memberInGroup, memberInAnyGroup } from '../utils/members'
+import { memberInGroup, memberInAnyGroup, meetingStats } from '../utils/members'
 import { usePersistedState } from '../hooks/usePersistedState'
 
 export default function Reports() {
@@ -73,39 +72,33 @@ export default function Reports() {
 
   const filteredMembers = useMemo(() => {
     const leaderGroupIds = isLeader ? (profile?.groupIds || []) : null
-    if (selGroup) return members.filter(m => memberInGroup(m, selGroup))
-    if (leaderGroupIds) return members.filter(m => memberInAnyGroup(m, leaderGroupIds))
-    return members
+    if (selGroup) return members.filter(m => m.active !== false && memberInGroup(m, selGroup))
+    if (leaderGroupIds) return members.filter(m => m.active !== false && memberInAnyGroup(m, leaderGroupIds))
+    return members.filter(m => m.active !== false)
   }, [members, selGroup, isLeader, profile])
 
   // Ranking report data
   const ranking = useMemo(() => {
     return filteredMembers.map(m => {
-      let present = 0, late = 0, total = 0
+      let present = 0, total = 0
       filteredRecords.forEach(r => {
         if (m.joinDate && r.date < m.joinDate) return  // no contar reuniones antes del ingreso
+        total++  // toda reunión del grupo después del ingreso cuenta
         const st = r.records?.[m.id]
-        if (st !== undefined) {
-          total++
-          if (st === 'present') present++
-          if (st === 'late') late++
-        }
+        if (st === 'present' || st === 'late') present++
       })
-      const pct = total > 0 ? Math.round(((present + late) / total) * 100) : 0
-      return { id: m.id, name: m.fullName, total, present, late, pct }
+      const pct = total > 0 ? Math.round((present / total) * 100) : 0
+      return { id: m.id, name: m.fullName, total, present, pct }
     }).sort((a, b) => b.pct - a.pct)
   }, [filteredMembers, filteredRecords])
 
   // Summary
   const summary = useMemo(() => {
     if (!filteredRecords.length) return null
-    const last       = filteredRecords[0]
-    const eligibleIds = new Set(filteredMembers.filter(m => !m.joinDate || m.joinDate <= last.date).map(m => m.id))
-    const total   = eligibleIds.size
-    const present = Object.entries(last.records || {}).filter(([id, v]) => eligibleIds.has(id) && v === 'present').length
-    const pct     = total > 0 ? Math.round((present / total) * 100) : 0
+    const last = filteredRecords[0]
+    const { total, present, pct } = meetingStats(last, members)
     return { date: last.date, total, present, pct }
-  }, [filteredRecords, filteredMembers])
+  }, [filteredRecords, members])
 
   // New members who attended in the filtered records
   const newAttendees = useMemo(() => {
@@ -176,8 +169,8 @@ export default function Reports() {
   const selectedMeetingMembers = useMemo(() => {
     if (!selectedMeetingRecord) return []
     return selectedMeetingRecord.groupId
-      ? members.filter(m => memberInGroup(m, selectedMeetingRecord.groupId))
-      : members
+      ? members.filter(m => m.active !== false && memberInGroup(m, selectedMeetingRecord.groupId))
+      : members.filter(m => m.active !== false)
   }, [selectedMeetingRecord, members])
 
   const groupName = groups.find(g => g.id === selGroup)?.name || 'Todos'
@@ -210,6 +203,10 @@ export default function Reports() {
       <div className="sticky top-0 z-10 flex items-center justify-between px-4 py-3"
         style={{ background: 'var(--surface)', borderBottom: '1px solid var(--border)', paddingTop: 'max(12px, env(safe-area-inset-top))' }}>
         <h1 className="font-syne font-extrabold text-[17px]" style={{ color: 'var(--text)' }}>Reportes</h1>
+        <button onClick={loadData} className="w-8 h-8 flex items-center justify-center rounded-full press"
+          style={{ background: 'var(--surface)', color: 'var(--text-2)' }}>
+          <ArrowClockwise size={18} />
+        </button>
       </div>
 
       {/* Filters (for non-listas tabs) */}
@@ -276,31 +273,21 @@ export default function Reports() {
                     </p>
 
                     {filteredRecords.slice(0, 10).map(r => {
-                      const eligibleIds = new Set(filteredMembers.filter(m => !m.joinDate || m.joinDate <= r.date).map(m => m.id))
-                      const total   = eligibleIds.size
-                      const present = Object.entries(r.records || {}).filter(([id, v]) => eligibleIds.has(id) && v === 'present').length
-                      const late    = Object.entries(r.records || {}).filter(([id, v]) => eligibleIds.has(id) && v === 'late').length
-                      const pct     = total > 0 ? Math.round(((present + late) / total) * 100) : 0
-                      const color   = pct >= 70 ? 'var(--green)' : pct >= 40 ? 'var(--amber)' : 'var(--red)'
+                      const { total, present, pct } = meetingStats(r, members)
+                      const color = pct >= 70 ? 'var(--green)' : pct >= 40 ? 'var(--amber)' : 'var(--red)'
                       return (
                         <div key={r.id} className="flex items-center gap-3 px-4 py-3 rounded-[12px]"
                           style={{ background: 'var(--surface)', border: '1px solid var(--border)' }}>
                           <div className="w-2 h-2 rounded-full" style={{ background: color }} />
                           <div className="flex-1">
                             <p className="text-sm font-semibold" style={{ color: 'var(--text)' }}>{formatDateShort(r.date)}</p>
-                            <p className="text-xs" style={{ color: 'var(--text-2)' }}>{present + late} de {total}</p>
+                            <p className="text-xs" style={{ color: 'var(--text-2)' }}>{present} de {total}</p>
                           </div>
                           <span className="font-syne font-extrabold text-lg" style={{ color }}>{pct}%</span>
                         </div>
                       )
                     })}
 
-                    <button
-                      onClick={() => exportAttendanceReport(filteredRecords, filteredMembers, groupName, `${dateFrom}_${dateTo}`)}
-                      className="h-12 rounded-[12px] font-bold text-sm flex items-center justify-center gap-2 press"
-                      style={{ background: 'rgba(59,130,246,0.12)', color: 'var(--accent)', border: '1px solid rgba(59,130,246,0.25)' }}>
-                      <DownloadSimple size={18} /> Exportar Excel
-                    </button>
                   </>
                 ) : (
                   <EmptyState icon={ChartBar} title="Sin datos" description="No hay registros en el período seleccionado." />
@@ -315,6 +302,12 @@ export default function Reports() {
                   <EmptyState icon={Trophy} title="Sin datos" />
                 ) : (
                   <>
+                    <button
+                      onClick={() => exportRankingReport(ranking)}
+                      className="h-12 rounded-[12px] font-bold text-sm flex items-center justify-center gap-2 press"
+                      style={{ background: 'rgba(59,130,246,0.12)', color: 'var(--accent)', border: '1px solid rgba(59,130,246,0.25)' }}>
+                      <DownloadSimple size={18} /> Exportar Ranking
+                    </button>
                     {ranking.map((r, i) => {
                       const medal = i === 0 ? '🥇' : i === 1 ? '🥈' : i === 2 ? '🥉' : `${i + 1}.`
                       const color = r.pct >= 70 ? 'var(--green)' : r.pct >= 40 ? 'var(--amber)' : 'var(--red)'
@@ -330,12 +323,6 @@ export default function Reports() {
                         </div>
                       )
                     })}
-                    <button
-                      onClick={() => exportRankingReport(ranking)}
-                      className="h-12 rounded-[12px] font-bold text-sm flex items-center justify-center gap-2 press"
-                      style={{ background: 'rgba(59,130,246,0.12)', color: 'var(--accent)', border: '1px solid rgba(59,130,246,0.25)' }}>
-                      <DownloadSimple size={18} /> Exportar Ranking
-                    </button>
                   </>
                 )}
               </div>
@@ -351,6 +338,15 @@ export default function Reports() {
                   <EmptyState icon={Star} title="Sin nuevos" description="No hay personas nuevas con asistencia en este período." />
                 ) : (
                   <>
+                    <button
+                      onClick={() => {
+                        const grpMap = Object.fromEntries(groups.map(g => [g.id, g.name]))
+                        exportMembersList(newAttendees.map(m => ({ ...m, _groupName: grpMap[m.groupId] || '' })), `Nuevos_${groupName}`)
+                      }}
+                      className="h-12 rounded-[12px] font-bold text-sm flex items-center justify-center gap-2 press"
+                      style={{ background: 'rgba(245,158,11,0.12)', color: 'var(--amber)', border: '1px solid rgba(245,158,11,0.25)' }}>
+                      <DownloadSimple size={18} /> Exportar lista de nuevos
+                    </button>
                     <div className="grid grid-cols-2 gap-3">
                       <div className="flex flex-col items-center gap-1 p-3 rounded-[12px]"
                         style={{ background: 'var(--surface)', border: '1px solid var(--border)' }}>
@@ -433,15 +429,6 @@ export default function Reports() {
                         )}
                       </button>
                     ))}
-                    <button
-                      onClick={() => {
-                        const grpMap = Object.fromEntries(groups.map(g => [g.id, g.name]))
-                        exportMembersList(newAttendees.map(m => ({ ...m, _groupName: grpMap[m.groupId] || '' })), `Nuevos_${groupName}`)
-                      }}
-                      className="h-12 rounded-[12px] font-bold text-sm flex items-center justify-center gap-2 press"
-                      style={{ background: 'rgba(245,158,11,0.12)', color: 'var(--amber)', border: '1px solid rgba(245,158,11,0.25)' }}>
-                      <DownloadSimple size={18} /> Exportar lista de nuevos
-                    </button>
                   </>
                 )}
               </div>
@@ -634,19 +621,24 @@ export default function Reports() {
                         return <option key={r.id} value={r.id}>{lbl}</option>
                       })}
                   </select>
-                  {selectedMeetingRecord && (
-                    <div className="text-xs" style={{ color: 'var(--text-2)' }}>
-                      {Object.values(selectedMeetingRecord.records || {}).filter(v => v === 'present' || v === 'late').length} presentes ·{' '}
-                      {Object.values(selectedMeetingRecord.records || {}).filter(v => v === 'absent').length} ausentes
-                    </div>
-                  )}
+                  {selectedMeetingRecord && (() => {
+                    const activeIds = new Set(selectedMeetingMembers.map(m => m.id))
+                    const recs = selectedMeetingRecord.records || {}
+                    const pres = Object.entries(recs).filter(([id, v]) => activeIds.has(id) && (v === 'present' || v === 'late')).length
+                    const ause = Object.entries(recs).filter(([id, v]) => activeIds.has(id) && v === 'absent').length
+                    return (
+                      <div className="text-xs" style={{ color: 'var(--text-2)' }}>
+                        {pres} presentes · {ause} ausentes
+                      </div>
+                    )
+                  })()}
                   <button
                     disabled={!listMeeting}
                     onClick={() => {
                       if (!selectedMeetingRecord) return
                       const grp    = groups.find(g => g.id === selectedMeetingRecord.groupId)
                       const grpMap = Object.fromEntries(groups.map(g => [g.id, g.name]))
-                      const allWithGroup = members.map(m => ({ ...m, _groupName: grpMap[m.groupId] || '' }))
+                      const allWithGroup = members.filter(m => m.active !== false).map(m => ({ ...m, _groupName: grpMap[m.groupId] || '' }))
                       exportMeetingAttendeesList(selectedMeetingRecord, selectedMeetingMembers, allWithGroup, grp?.name || '')
                     }}
                     className="h-11 rounded-[10px] font-bold text-sm flex items-center justify-center gap-2 press"

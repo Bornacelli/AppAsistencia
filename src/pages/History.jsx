@@ -9,7 +9,7 @@ import TopBar from '../components/layout/TopBar'
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, Cell } from 'recharts'
 import { CalendarBlank } from '@phosphor-icons/react'
 import { formatDateShort, todayStr, localDateStr } from '../utils/dates'
-import { memberInAnyGroup, memberInGroup } from '../utils/members'
+import { memberInAnyGroup, memberInGroup, meetingStats } from '../utils/members'
 
 export default function History() {
   const { profile } = useAuth()
@@ -70,20 +70,11 @@ export default function History() {
   // Chart data (last 8 records)
   const chartData = useMemo(() => {
     return filtered.slice(0, 8).reverse().map(r => {
-      const recordedIds = Object.keys(r.records || {})
-      const eligibleRecorded = recordedIds.filter(id => {
-        const m = groupMembers.find(mm => mm.id === id)
-        return !m?.joinDate || m.joinDate <= r.date
-      })
-      const total   = eligibleRecorded.length || groupMembers.filter(m => !m.joinDate || m.joinDate <= r.date).length
-      const present = Object.values(r.records || {}).filter(v => v === 'present').length
-      const pct     = total > 0 ? Math.round((present / total) * 100) : 0
+      const { total, present, pct } = meetingStats(r, groupMembers)
       const d = new Date((r.date || '') + 'T12:00:00')
       return {
         date: d.toLocaleDateString('es-ES', { day: 'numeric', month: 'short' }),
-        pct,
-        present,
-        total,
+        pct, present, total,
       }
     })
   }, [filtered, groupMembers])
@@ -160,16 +151,8 @@ export default function History() {
                   {filtered.length} registro{filtered.length !== 1 ? 's' : ''}
                 </p>
                 {filtered.map(r => {
-                  const recordedIds = Object.keys(r.records || {})
-                  const eligibleRecorded = recordedIds.filter(id => {
-                    const m = groupMembers.find(mm => mm.id === id)
-                    return !m?.joinDate || m.joinDate <= r.date
-                  })
-                  const total   = eligibleRecorded.length || groupMembers.filter(m => !m.joinDate || m.joinDate <= r.date).length
-                  const present = Object.values(r.records || {}).filter(v => v === 'present').length
-                  const late    = Object.values(r.records || {}).filter(v => v === 'late').length
-                  const pct     = total > 0 ? Math.round(((present + late) / total) * 100) : 0
-                  const color   = pct >= 70 ? 'var(--green)' : pct >= 40 ? 'var(--amber)' : 'var(--red)'
+                  const { total, present, pct } = meetingStats(r, groupMembers)
+                  const color = pct >= 70 ? 'var(--green)' : pct >= 40 ? 'var(--amber)' : 'var(--red)'
                   const grp     = groups.find(g => g.id === r.groupId)
                   return (
                     <div key={r.id} className="flex items-center gap-4 px-4 py-3 rounded-[12px]"
@@ -178,7 +161,7 @@ export default function History() {
                       <div className="flex-1 min-w-0">
                         <p className="text-sm font-bold" style={{ color: 'var(--text)' }}>{formatDateShort(r.date)}</p>
                         <p className="text-xs mt-0.5" style={{ color: 'var(--text-2)' }}>
-                          {present + late} de {total} asistieron
+                          {present} de {total} asistieron
                           {grp && <span style={{ color: 'var(--text-3)' }}> · {grp.name}</span>}
                         </p>
                       </div>

@@ -123,7 +123,7 @@ export default function Birthdays() {
                         <p className="text-xs" style={{ color: 'var(--amber)' }}>¡Cumple {m._age ? `${m._age} años` : 'años'}!</p>
                       </button>
                       {m.phone && (
-                        <a href={`https://wa.me/${m.phone.replace(/\D/g, '')}?text=${encodeURIComponent(`¡Feliz cumpleaños ${m.shortName || m.fullName.split(' ')[0]}! 🎉`)}`}
+                        <a href={`https://wa.me/${m.phone.replace(/\D/g, '')}?text=${encodeURIComponent(`¡Feliz cumpleaños ${m.fullName.split(' ')[0]}! 🎉`)}`}
                           target="_blank" rel="noreferrer"
                           className="flex items-center gap-1 px-3 py-1.5 rounded-[8px] text-xs font-bold press"
                           style={{ background: 'var(--green-bg)', color: 'var(--green)', border: '1px solid var(--green-bdr)' }}>
@@ -171,7 +171,7 @@ export default function Birthdays() {
                         </p>
                       </button>
                       {m.phone && (
-                        <a href={`https://wa.me/${m.phone.replace(/\D/g, '')}${m._today ? `?text=${encodeURIComponent(`¡Feliz cumpleaños ${m.shortName || m.fullName.split(' ')[0]}! 🎉`)}` : ''}`}
+                        <a href={`https://wa.me/${m.phone.replace(/\D/g, '')}${m._today ? `?text=${encodeURIComponent(`¡Feliz cumpleaños ${m.fullName.split(' ')[0]}! 🎉`)}` : ''}`}
                           target="_blank" rel="noreferrer"
                           className="w-9 h-9 flex items-center justify-center rounded-[9px] press"
                           style={{ background: 'var(--green-bg)', color: 'var(--green)', border: '1px solid var(--green-bdr)', flexShrink: 0 }}>

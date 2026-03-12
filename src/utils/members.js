@@ -22,3 +22,26 @@ export function memberInAnyGroup(member, groupIds) {
   const ids = getMemberGroupIds(member)
   return groupIds.some(gid => ids.includes(gid))
 }
+
+/**
+ * Calcula las estadísticas de asistencia de una reunión de forma centralizada.
+ * - Solo cuenta miembros activos del grupo con joinDate <= fecha de la reunión.
+ * - Cuenta 'present' y 'late' como asistencia (compatibilidad con datos viejos).
+ * @param {object} record   — documento de attendance { date, groupId, records }
+ * @param {Array}  members  — lista completa de miembros (sin filtrar)
+ * @returns {{ total: number, present: number, pct: number }}
+ */
+export function meetingStats(record, members) {
+  const eligible = members.filter(m =>
+    m.active !== false &&
+    (!record.groupId || memberInGroup(m, record.groupId)) &&
+    (!m.joinDate || m.joinDate <= record.date)
+  )
+  const eligibleIds = new Set(eligible.map(m => m.id))
+  const present = Object.entries(record.records || {})
+    .filter(([id, v]) => eligibleIds.has(id) && (v === 'present' || v === 'late'))
+    .length
+  const total = eligible.length
+  const pct   = total > 0 ? Math.round((present / total) * 100) : 0
+  return { total, present, pct }
+}

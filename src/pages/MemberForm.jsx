@@ -22,10 +22,7 @@ function MemberCombobox({ label, members, selectedId, legacyText, onSelect, excl
     if (!query.trim()) return []
     const q = query.toLowerCase()
     return members
-      .filter(m => m.id !== excludeId && (
-        m.fullName.toLowerCase().includes(q) ||
-        (m.shortName || '').toLowerCase().includes(q)
-      ))
+      .filter(m => m.id !== excludeId && m.fullName.toLowerCase().includes(q))
       .slice(0, 8)
   }, [query, members, excludeId])
 
@@ -57,11 +54,6 @@ function MemberCombobox({ label, members, selectedId, legacyText, onSelect, excl
           style={{ background: 'var(--surface)', border: '1px solid var(--border)' }}>
           <span className="flex-1 text-sm font-medium" style={{ color: 'var(--text)' }}>
             {selectedMember.fullName?.toUpperCase()}
-            {selectedMember.shortName && (
-              <span className="ml-1.5 text-xs" style={{ color: 'var(--text-2)' }}>
-                ({selectedMember.shortName})
-              </span>
-            )}
           </span>
           <button type="button" onClick={() => onSelect(null, null)}
             className="w-5 h-5 rounded-full flex items-center justify-center flex-shrink-0"
@@ -97,9 +89,6 @@ function MemberCombobox({ label, members, selectedId, legacyText, onSelect, excl
                     borderBottom: i < filtered.length - 1 ? '1px solid var(--border)' : 'none',
                   }}>
                   {m.fullName?.toUpperCase()}
-                  {m.shortName && (
-                    <span className="ml-1.5 text-xs" style={{ color: 'var(--text-2)' }}>({m.shortName})</span>
-                  )}
                 </button>
               )) : (
                 <p className="px-4 py-3 text-sm" style={{ color: 'var(--text-2)' }}>Sin resultados</p>
@@ -138,7 +127,6 @@ export default function MemberForm() {
 
   const [form, setForm] = useState({
     fullName:        fromVisitor?.name  || '',
-    shortName:       '',
     birthDate:       '',
     phone:           fromVisitor?.phone || '',
     address:         '',
@@ -202,7 +190,6 @@ export default function MemberForm() {
         const d = snap.data()
         setForm({
           fullName:        d.fullName        || '',
-          shortName:       d.shortName       || '',
           birthDate:       d.birthDate       || '',
           phone:           d.phone           || '',
           address:         d.address         || '',
@@ -232,7 +219,6 @@ export default function MemberForm() {
     try {
       const data = {
         fullName:        form.fullName.trim(),
-        shortName:       form.shortName.trim() || null,
         birthDate:       form.birthDate || null,
         phone:           form.phone.trim() || null,
         address:         form.address.trim() || null,
@@ -274,7 +260,7 @@ export default function MemberForm() {
 
       <form onSubmit={handleSubmit} className="flex flex-col gap-4 px-4 py-4">
         <Inp label="Nombre completo *" value={form.fullName} onChange={e => set('fullName', e.target.value)} placeholder="Juan Pablo García" autoCapitalize="words" error={errors.fullName} />
-        <Inp label="Nombre corto" value={form.shortName} onChange={e => set('shortName', e.target.value)} placeholder="Juanpa (opcional)" />
+       {/* <Inp label="Nombre corto" value={form.shortName} onChange={e => set('shortName', e.target.value)} placeholder="Juanpa (opcional)" /> */}  
         <Inp label="Fecha de nacimiento" type="date" value={form.birthDate} onChange={e => set('birthDate', e.target.value)} style={{ colorScheme: 'dark' }} />
         <Inp label="WhatsApp" type="tel" value={form.phone} onChange={e => set('phone', e.target.value)} placeholder="+57 300 000 0000" />
         <Inp label="Dirección" value={form.address} onChange={e => set('address', e.target.value)} placeholder="Barrio, ciudad" />

@@ -201,7 +201,6 @@ export default function Attendance() {
     const q = search.toLowerCase()
     return members.filter(m =>
       (m.fullName || '').toLowerCase().includes(q) ||
-      (m.shortName || '').toLowerCase().includes(q) ||
       (m.phone || '').includes(q)
     )
   }, [members, search])
@@ -214,7 +213,6 @@ export default function Attendance() {
     return allMembers.filter(m =>
       !currentIds.has(m.id) && (
         (m.fullName || '').toLowerCase().includes(q) ||
-        (m.shortName || '').toLowerCase().includes(q) ||
         (m.phone || '').includes(q)
       )
     )

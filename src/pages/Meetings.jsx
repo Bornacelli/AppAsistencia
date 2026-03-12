@@ -9,7 +9,7 @@ import EmptyState from '../components/ui/EmptyState'
 import Modal from '../components/ui/Modal'
 import { CalendarBlank, CheckCircle, XCircle, Trash } from '@phosphor-icons/react'
 import { formatDateShort } from '../utils/dates'
-import { memberInAnyGroup, memberInGroup } from '../utils/members'
+import { memberInAnyGroup, memberInGroup, meetingStats } from '../utils/members'
 
 export default function Meetings() {
   const { profile } = useAuth()
@@ -92,18 +92,8 @@ export default function Meetings() {
             </p>
             {filtered.map(r => {
               const grpMems = groupMembersFor(r.groupId)
-              // Use recorded IDs filtered by joinDate as source of truth for total
-              // This avoids counting members added to the group after this meeting
-              const recordedIds = Object.keys(r.records || {})
-              const eligibleRecorded = recordedIds.filter(id => {
-                const m = members.find(mm => mm.id === id)
-                return !m?.joinDate || m.joinDate <= r.date
-              })
-              const total   = eligibleRecorded.length || grpMems.filter(m => !m.joinDate || m.joinDate <= r.date).length
-              const present = Object.values(r.records || {}).filter(v => v === 'present').length
-              const late    = Object.values(r.records || {}).filter(v => v === 'late').length
-              const pct     = total > 0 ? Math.round(((present + late) / total) * 100) : 0
-              const color   = pct >= 70 ? 'var(--green)' : pct >= 40 ? 'var(--amber)' : 'var(--red)'
+              const { total, present, pct } = meetingStats(r, members)
+              const color = pct >= 70 ? 'var(--green)' : pct >= 40 ? 'var(--amber)' : 'var(--red)'
               return (
                 <button key={r.id}
                   onClick={() => setSelRecord({ record: r, grpMems, grpName: groupName(r.groupId) })}
@@ -113,7 +103,7 @@ export default function Meetings() {
                   <div className="flex-1 min-w-0">
                     <p className="text-sm font-bold" style={{ color: 'var(--text)' }}>{formatDateShort(r.date)}</p>
                     <p className="text-xs mt-0.5" style={{ color: 'var(--text-2)' }}>
-                      {present + late} de {total} asistieron
+                      {present} de {total} asistieron
                       {r.groupId && <span style={{ color: 'var(--text-3)' }}> · {groupName(r.groupId)}</span>}
                     </p>
                   </div>
@@ -149,19 +139,17 @@ export default function Meetings() {
 }
 
 function MeetingDetail({ record, members, groupName, allMembers, onClose, onDelete }) {
-  const recs = record.records || {}
-  // Only consider records for members who had joined by this meeting's date
-  const eligibleEntries = Object.entries(recs).filter(([id]) => {
-    const m = allMembers.find(mm => mm.id === id)
-    return !m?.joinDate || m.joinDate <= record.date
-  })
-  const presentIds = eligibleEntries.filter(([, v]) => v === 'present' || v === 'late').map(([k]) => k)
-  const absentIds  = eligibleEntries.filter(([, v]) => v === 'absent').map(([k]) => k)
-
-  const totalAttended = presentIds.length
-  const total = eligibleEntries.length || members.filter(m => !m.joinDate || m.joinDate <= record.date).length
-  const pct   = total > 0 ? Math.round((totalAttended / total) * 100) : 0
+  const { total, present: totalAttended, pct } = meetingStats(record, allMembers)
   const color = pct >= 70 ? 'var(--green)' : pct >= 40 ? 'var(--amber)' : 'var(--red)'
+
+  const recs = record.records || {}
+  const activeEligibleIds = new Set(
+    allMembers
+      .filter(m => m.active !== false && (!m.joinDate || m.joinDate <= record.date))
+      .map(m => m.id)
+  )
+  const presentIds = Object.entries(recs).filter(([id, v]) => activeEligibleIds.has(id) && (v === 'present' || v === 'late')).map(([k]) => k)
+  const absentIds  = Object.entries(recs).filter(([id, v]) => activeEligibleIds.has(id) && v === 'absent').map(([k]) => k)
 
   function getName(id) {
     return allMembers.find(m => m.id === id)?.fullName || 'Persona externa'

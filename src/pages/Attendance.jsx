@@ -9,7 +9,7 @@ import Avatar from '../components/ui/Avatar'
 import LoadingSpinner from '../components/ui/LoadingSpinner'
 import {
   MagnifyingGlass, CheckCircle, XCircle,
-  UserPlus, CloudCheck, Warning, CalendarBlank
+  UserPlus, CloudCheck, Warning, CalendarBlank, ArrowCounterClockwise
 } from '@phosphor-icons/react'
 import { todayStr, formatDateShort } from '../utils/dates'
 
@@ -22,9 +22,11 @@ export default function Attendance() {
   const [groups,       setGroups]       = useState([])
   const [selGroup,     setSelGroup]     = usePersistedState('att_group', '')
   const [selDate,      setSelDate]      = usePersistedState('att_date', todayStr())
-  const [members,      setMembers]      = useState([])       // current group members
-  const [extraMembers, setExtraMembers] = useState([])       // cross-group members already in this attendance
-  const [allMembers,   setAllMembers]   = useState([])       // ALL members across groups
+  const [members,          setMembers]          = useState([])  // current group active members
+  const [inactiveMembers,  setInactiveMembers]  = useState([])  // current group inactive members
+  const [extraMembers,     setExtraMembers]     = useState([])  // cross-group members already in this attendance
+  const [allMembers,       setAllMembers]       = useState([])  // ALL members across groups
+  const membersRef = useRef([])
   const [attendance,    setAttendance]    = useState({})
   const [meetingExists, setMeetingExists] = useState(false)
   const [search,        setSearch]        = useState('')
@@ -64,24 +66,32 @@ export default function Attendance() {
   async function loadMembersAndAttendance() {
     setLoading(true)
     try {
-      const mSnap = await getDocs(query(collection(db, 'members'), where('active', '==', true)))
+      const mSnap = await getDocs(collection(db, 'members'))
       const all = mSnap.docs.map(d => ({ id: d.id, ...d.data() }))
       all.sort((a, b) => (a.fullName || '').localeCompare(b.fullName || '', 'es'))
-      setAllMembers(all)
+      const allActive = all.filter(m => m.active !== false)
+      setAllMembers(allActive)
 
-      let groupMems = all
-      if (selGroup !== '__default__') {
-        groupMems = all.filter(m => {
-          const mGroupIds = m.groupIds?.length > 0 ? m.groupIds : (m.groupId ? [m.groupId] : [])
-          return mGroupIds.includes(selGroup)
-        })
-      } else if (!isAdmin) groupMems = all.filter(m => !m.groupId && (!m.groupIds || m.groupIds.length === 0))
+      const belongsToGroup = (m) => {
+        if (selGroup === '__default__') return !m.groupId && (!m.groupIds || m.groupIds.length === 0)
+        const mGroupIds = m.groupIds?.length > 0 ? m.groupIds : (m.groupId ? [m.groupId] : [])
+        return mGroupIds.includes(selGroup)
+      }
+
+      let groupMems = allActive.filter(belongsToGroup)
 
       // For past dates, only show members who had already joined by that date
       if (selDate < todayStr()) {
         groupMems = groupMems.filter(m => !m.joinDate || m.joinDate <= selDate)
       }
       setMembers(groupMems)
+      membersRef.current = groupMems
+
+      // Inactive members of this group (for the "Activar" section)
+      const inactiveGroupMems = all
+        .filter(m => m.active === false && belongsToGroup(m))
+        .sort((a, b) => (a.fullName || '').localeCompare(b.fullName || '', 'es'))
+      setInactiveMembers(inactiveGroupMems)
 
       // Load existing attendance
       const docId = selGroup === '__default__' ? selDate : `${selGroup}_${selDate}`
@@ -164,19 +174,70 @@ export default function Attendance() {
       }, { merge: true })
       setSaveStatus('saved')
       setTimeout(() => setSaveStatus('idle'), 2000)
+      checkAutoDeactivate()
     } catch {
       setSaveStatus('error')
     }
   }
 
+  useEffect(() => { membersRef.current = members }, [members])
+
   function mark(memberId, status) {
     setAttendance(prev => {
       const next = { ...prev }
-      if (next[memberId] === status) delete next[memberId]
+      if (next[memberId] === status) next[memberId] = null
       else next[memberId] = status
       scheduleAutoSave(next)
       return next
     })
+  }
+
+  async function handleActivateMember(member) {
+    try {
+      await updateDoc(doc(db, 'members', member.id), { active: true })
+      const activated = { ...member, active: true }
+      setInactiveMembers(prev => prev.filter(m => m.id !== member.id))
+      setMembers(prev => [...prev, activated].sort((a, b) => (a.fullName || '').localeCompare(b.fullName || '', 'es')))
+      setAllMembers(prev => [...prev, activated].sort((a, b) => (a.fullName || '').localeCompare(b.fullName || '', 'es')))
+      ok(`${member.fullName} reactivado`)
+    } catch {
+      toastError('Error al reactivar')
+    }
+  }
+
+  async function checkAutoDeactivate() {
+    const currentMembers = membersRef.current
+    if (!currentMembers.length || !selGroup || selGroup === '__default__') return
+    try {
+      const cfgSnap = await getDoc(doc(db, 'config', 'general'))
+      const threshold = cfgSnap.exists() ? (cfgSnap.data().inactiveAfterMeetings || 8) : 8
+
+      const attSnap = await getDocs(query(collection(db, 'attendance'), where('groupId', '==', selGroup)))
+      const attDocs = attSnap.docs
+        .map(d => d.data())
+        .sort((a, b) => (b.date || '').localeCompare(a.date || ''))
+
+      const toDeactivate = []
+      currentMembers.forEach(m => {
+        const relevant = attDocs.filter(a => !m.joinDate || a.date >= m.joinDate)
+        const lastN = relevant.slice(0, threshold)
+        const consecutiveAbsences = lastN.filter(a => a.records?.[m.id] === 'absent').length
+        if (relevant.length < threshold) return
+        if (consecutiveAbsences >= threshold) toDeactivate.push(m)
+      })
+      if (toDeactivate.length === 0) return
+
+      await Promise.all(toDeactivate.map(m => updateDoc(doc(db, 'members', m.id), { active: false })))
+
+      const deactivateIds = new Set(toDeactivate.map(m => m.id))
+      setMembers(prev => prev.filter(m => !deactivateIds.has(m.id)))
+      setInactiveMembers(prev =>
+        [...prev, ...toDeactivate.map(m => ({ ...m, active: false }))]
+          .sort((a, b) => (a.fullName || '').localeCompare(b.fullName || '', 'es'))
+      )
+    } catch (e) {
+      console.error('Auto-deactivate error:', e)
+    }
   }
 
   async function addMemberToGroup(member) {
@@ -204,6 +265,16 @@ export default function Attendance() {
       (m.phone || '').includes(q)
     )
   }, [members, search])
+
+  // Inactive members of this group matching search (or all if no search)
+  const filteredInactive = useMemo(() => {
+    if (!search.trim()) return inactiveMembers
+    const q = search.toLowerCase()
+    return inactiveMembers.filter(m =>
+      (m.fullName || '').toLowerCase().includes(q) ||
+      (m.phone || '').includes(q)
+    )
+  }, [inactiveMembers, search])
 
   // From other groups matching search
   const filteredOtherGroups = useMemo(() => {
@@ -485,6 +556,37 @@ export default function Attendance() {
                   En otros grupos
                 </p>
                 {filteredOtherGroups.map(m => <MemberCard key={m.id} m={m} showGroupBadge onAddToGroup={() => addMemberToGroup(m)} />)}
+              </>
+            )}
+
+            {/* Inactive members of this group */}
+            {filteredInactive.length > 0 && (
+              <>
+                <p className="text-[11px] font-bold uppercase tracking-widest py-2 mt-2" style={{ color: 'var(--text-3)' }}>
+                  Inactivos del grupo
+                </p>
+                {filteredInactive.map(m => (
+                  <div key={m.id} className="flex items-center gap-3 rounded-[10px] px-3 py-2.5 mb-2"
+                    style={{ background: 'var(--surface)', border: '1px solid var(--border)', opacity: 0.65 }}>
+                    <button onClick={() => navigate(`/members/${m.id}`)} className="flex items-center gap-3 flex-1 min-w-0 text-left">
+                      <Avatar name={m.fullName} size={40} />
+                      <div className="min-w-0">
+                        <p className="text-sm font-bold truncate" style={{ color: 'var(--text)' }}>{m.fullName?.toUpperCase()}</p>
+                        <span className="text-[9px] font-extrabold uppercase tracking-[0.8px] px-1.5 py-0.5 rounded-[4px]"
+                          style={{ background: 'rgba(239,68,68,0.1)', color: 'var(--red)', border: '1px solid rgba(239,68,68,0.2)' }}>
+                          Inactivo
+                        </span>
+                      </div>
+                    </button>
+                    <button
+                      onClick={() => handleActivateMember(m)}
+                      className="text-[9px] font-extrabold px-2 py-1.5 rounded-[7px] press-sm flex items-center gap-1"
+                      style={{ background: 'rgba(34,197,94,0.12)', color: 'var(--green)', border: '1px solid rgba(34,197,94,0.25)', flexShrink: 0 }}>
+                      <ArrowCounterClockwise size={12} weight="bold" />
+                      Activar
+                    </button>
+                  </div>
+                ))}
               </>
             )}
           </>

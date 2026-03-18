@@ -1,30 +1,36 @@
 import { useState, useEffect } from 'react'
-import { doc, getDoc, setDoc, collection, getDocs, addDoc, updateDoc } from 'firebase/firestore'
+import { doc, getDoc, setDoc, collection, getDocs, addDoc, updateDoc, writeBatch } from 'firebase/firestore'
 import { db } from '../firebase'
 import { useAuth } from '../context/AuthContext'
 import { useToast } from '../context/ToastContext'
 import LoadingSpinner from '../components/ui/LoadingSpinner'
 import Modal from '../components/ui/Modal'
 import { Inp } from '../components/ui/Inp'
-import { Gear, Plus, PencilSimple, CheckSquare } from '@phosphor-icons/react'
+import { Gear, Plus, PencilSimple, CheckSquare, Trash } from '@phosphor-icons/react'
 
 export default function Settings() {
   const { profile } = useAuth()
   const { ok, error: toastError } = useToast()
   const isSuperAdmin = profile?.role === 'super_admin'
+  const canManageRanges = isSuperAdmin || profile?.role === 'admin'
 
-  const [loading,  setLoading]  = useState(true)
-  const [saving,   setSaving]   = useState(false)
+  const [loading,      setLoading]      = useState(true)
+  const [saving,       setSaving]       = useState(false)
+  const [reactivating, setReactivating] = useState(false)
   const [groups,   setGroups]   = useState([])
   const [modal,    setModal]    = useState(null)
   const [selGroup, setSelGroup] = useState(null)
   const [groupForm, setGroupForm] = useState({ name: '', active: true })
 
   const [config, setConfig] = useState({
-    churchName:         '',
-    meetingDayName:     '',
-    absenceAlertWeeks:  2,
+    churchName:              '',
+    meetingDayName:          '',
+    absenceAlertWeeks:       2,
+    inactiveAfterMeetings:   8,
+    ageRanges:               [],
   })
+  const [rangeModal, setRangeModal] = useState(false)
+  const [rangeForm,  setRangeForm]  = useState({ name: '', min: '', max: '' })
   const setC = (k, v) => setConfig(c => ({ ...c, [k]: v }))
 
   useEffect(() => { loadData() }, [])
@@ -39,9 +45,11 @@ export default function Settings() {
       if (cfgSnap.exists()) {
         const d = cfgSnap.data()
         setConfig({
-          churchName:        d.churchName        || '',
-          meetingDayName:    d.meetingDayName    || '',
-          absenceAlertWeeks: d.absenceAlertWeeks || 2,
+          churchName:            d.churchName            || '',
+          meetingDayName:        d.meetingDayName        || '',
+          absenceAlertWeeks:     d.absenceAlertWeeks     || 2,
+          inactiveAfterMeetings: d.inactiveAfterMeetings || 8,
+          ageRanges:             d.ageRanges             || [],
         })
       }
       setGroups(gSnap.docs.map(d => ({ id: d.id, ...d.data() })).sort((a, b) => (a.name || '').localeCompare(b.name || '', 'es')))
@@ -54,10 +62,12 @@ export default function Settings() {
     setSaving(true)
     try {
       await setDoc(doc(db, 'config', 'general'), {
-        churchName:        config.churchName.trim(),
-        meetingDayName:    config.meetingDayName.trim(),
-        absenceAlertWeeks: Number(config.absenceAlertWeeks),
-        updatedAt:         new Date().toISOString(),
+        churchName:            config.churchName.trim(),
+        meetingDayName:        config.meetingDayName.trim(),
+        absenceAlertWeeks:     Number(config.absenceAlertWeeks),
+        inactiveAfterMeetings: Number(config.inactiveAfterMeetings),
+        ageRanges:             config.ageRanges,
+        updatedAt:             new Date().toISOString(),
       }, { merge: true })
       ok('Configuración guardada')
     } catch { toastError('Error al guardar') }
@@ -81,6 +91,45 @@ export default function Settings() {
       ok(selGroup ? 'Grupo actualizado' : 'Grupo creado')
     } catch { toastError('Error al guardar') }
     finally { setSaving(false) }
+  }
+
+  async function reactivateAllMembers() {
+    if (!window.confirm('¿Reactivar TODOS los miembros inactivos?')) return
+    setReactivating(true)
+    try {
+      const snap = await getDocs(collection(db, 'members'))
+      const inactive = snap.docs.filter(d => d.data().active === false)
+      const batch = writeBatch(db)
+      inactive.forEach(d => batch.update(doc(db, 'members', d.id), { active: true }))
+      await batch.commit()
+      ok(`${inactive.length} miembro${inactive.length !== 1 ? 's' : ''} reactivado${inactive.length !== 1 ? 's' : ''}`)
+    } catch { toastError('Error al reactivar') }
+    finally { setReactivating(false) }
+  }
+
+  async function saveAgeRanges(newRanges) {
+    try {
+      await setDoc(doc(db, 'config', 'general'), { ageRanges: newRanges }, { merge: true })
+    } catch { toastError('Error al guardar rangos') }
+  }
+
+  async function handleRangeAdd(e) {
+    e.preventDefault()
+    if (!rangeForm.name.trim() || rangeForm.min === '' || rangeForm.max === '') { toastError('Completa todos los campos'); return }
+    if (Number(rangeForm.min) > Number(rangeForm.max)) { toastError('La edad mínima no puede superar la máxima'); return }
+    const newRanges = [...config.ageRanges, { name: rangeForm.name.trim(), min: Number(rangeForm.min), max: Number(rangeForm.max) }]
+    setC('ageRanges', newRanges)
+    setRangeForm({ name: '', min: '', max: '' })
+    setRangeModal(false)
+    await saveAgeRanges(newRanges)
+    ok('Rango agregado')
+  }
+
+  async function handleRangeDelete(index) {
+    const newRanges = config.ageRanges.filter((_, j) => j !== index)
+    setC('ageRanges', newRanges)
+    await saveAgeRanges(newRanges)
+    ok('Rango eliminado')
   }
 
   function openEditGroup(g) {
@@ -154,6 +203,31 @@ export default function Settings() {
             </p>
           </div>
 
+          <div className="flex flex-col gap-1">
+            <label className="text-[11px] font-bold uppercase tracking-widest" style={{ color: 'var(--accent)' }}>
+              Reuniones para marcar inactivo automáticamente
+            </label>
+            <div className="flex items-center gap-2">
+              {[4, 6, 8, 10, 12].map(n => (
+                <button
+                  key={n}
+                  type="button"
+                  onClick={() => setC('inactiveAfterMeetings', n)}
+                  className="flex-1 py-2.5 rounded-[10px] text-sm font-bold press"
+                  style={{
+                    background: config.inactiveAfterMeetings === n ? 'rgba(239,68,68,0.15)' : 'var(--surface)',
+                    color: config.inactiveAfterMeetings === n ? 'var(--red)' : 'var(--text-2)',
+                    border: `1px solid ${config.inactiveAfterMeetings === n ? 'rgba(239,68,68,0.3)' : 'var(--border)'}`,
+                  }}>
+                  {n}
+                </button>
+              ))}
+            </div>
+            <p className="text-xs mt-1" style={{ color: 'var(--text-3)' }}>
+              Se marca inactivo tras {config.inactiveAfterMeetings} reuniones consecutivas sin asistir
+            </p>
+          </div>
+
           <button
             type="submit"
             disabled={saving}
@@ -162,6 +236,57 @@ export default function Settings() {
             {saving ? <span className="w-4 h-4 rounded-full border-2 border-white/30 border-t-white animate-spin-slow" /> : 'Guardar configuración'}
           </button>
         </form>
+
+        {/* Age ranges — visible for super_admin, admin and leader */}
+        {canManageRanges && (
+          <div className="flex flex-col gap-2">
+            <div className="flex items-center justify-between">
+              <p className="text-[11px] font-bold uppercase tracking-widest" style={{ color: 'var(--text-2)' }}>Rangos de edad</p>
+              <button type="button" onClick={() => setRangeModal(true)}
+                className="h-8 px-3 flex items-center gap-1.5 rounded-[8px] text-xs font-bold press"
+                style={{ background: 'var(--accent-g)', color: 'white' }}>
+                <Plus size={14} weight="bold" /> Agregar
+              </button>
+            </div>
+            {config.ageRanges.length === 0 ? (
+              <p className="text-xs" style={{ color: 'var(--text-3)' }}>Sin rangos configurados aún</p>
+            ) : (
+              <div className="flex flex-col gap-1.5">
+                {config.ageRanges.map((r, i) => (
+                  <div key={i} className="flex items-center gap-2 px-3 py-2 rounded-[9px]"
+                    style={{ background: 'var(--surface)', border: '1px solid var(--border)' }}>
+                    <span className="flex-1 text-sm font-semibold" style={{ color: 'var(--text)' }}>{r.name}</span>
+                    <span className="text-xs font-bold" style={{ color: 'var(--text-2)' }}>{r.min}–{r.max} años</span>
+                    <button type="button" onClick={() => handleRangeDelete(i)}
+                      className="w-7 h-7 flex items-center justify-center rounded-[7px] press"
+                      style={{ background: 'var(--card)', border: '1px solid var(--border)', color: 'var(--red)' }}>
+                      <Trash size={13} />
+                    </button>
+                  </div>
+                ))}
+              </div>
+            )}
+            <p className="text-xs" style={{ color: 'var(--text-3)' }}>
+              Clasifica miembros por edad para facilitar la formación de grupos por redes
+            </p>
+          </div>
+        )}
+
+        {/* Emergency: reactivate all members */}
+        {isSuperAdmin && (
+          <div className="flex flex-col gap-2">
+            <p className="text-[11px] font-bold uppercase tracking-widest" style={{ color: 'var(--text-2)' }}>Herramientas</p>
+            <button
+              onClick={reactivateAllMembers}
+              disabled={reactivating}
+              className="h-11 rounded-[12px] font-bold text-sm flex items-center justify-center gap-2 press"
+              style={{ background: 'rgba(34,197,94,0.12)', color: 'var(--green)', border: '1px solid rgba(34,197,94,0.25)' }}>
+              {reactivating
+                ? <span className="w-4 h-4 rounded-full border-2 border-green-500/30 border-t-green-500 animate-spin-slow" />
+                : 'Reactivar todos los miembros inactivos'}
+            </button>
+          </div>
+        )}
 
         {/* Groups management */}
         <div>
@@ -222,6 +347,22 @@ export default function Settings() {
             className="h-12 rounded-[12px] font-bold text-sm flex items-center justify-center gap-2 press"
             style={{ background: 'var(--accent-g)', color: 'white' }}>
             {saving ? <span className="w-4 h-4 rounded-full border-2 border-white/30 border-t-white animate-spin-slow" /> : selGroup ? 'Guardar cambios' : 'Crear grupo'}
+          </button>
+        </form>
+      </Modal>
+
+      {/* Range modal */}
+      <Modal open={rangeModal} onClose={() => { setRangeModal(false); setRangeForm({ name: '', min: '', max: '' }) }} title="Agregar rango de edad">
+        <form onSubmit={handleRangeAdd} className="flex flex-col gap-4">
+          <Inp label="Nombre del rango *" value={rangeForm.name} onChange={e => setRangeForm(f => ({ ...f, name: e.target.value }))} placeholder="Ej: Jóvenes, Adultos, Niños" autoCapitalize="words" />
+          <div className="flex gap-3">
+            <Inp label="Edad mínima *" type="number" value={rangeForm.min} onChange={e => setRangeForm(f => ({ ...f, min: e.target.value }))} placeholder="0" />
+            <Inp label="Edad máxima *" type="number" value={rangeForm.max} onChange={e => setRangeForm(f => ({ ...f, max: e.target.value }))} placeholder="99" />
+          </div>
+          <button type="submit"
+            className="h-12 rounded-[12px] font-bold text-sm flex items-center justify-center gap-2 press"
+            style={{ background: 'var(--accent-g)', color: 'white' }}>
+            Agregar rango
           </button>
         </form>
       </Modal>

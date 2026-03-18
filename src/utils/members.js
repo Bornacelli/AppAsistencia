@@ -24,6 +24,32 @@ export function memberInAnyGroup(member, groupIds) {
 }
 
 /**
+ * Calcula la edad en años a partir de una fecha de nacimiento (YYYY-MM-DD).
+ * Retorna null si no hay fecha o es inválida.
+ */
+export function getAge(birthDate) {
+  if (!birthDate) return null
+  const birth = new Date(birthDate)
+  if (isNaN(birth.getTime())) return null
+  const today = new Date()
+  let age = today.getFullYear() - birth.getFullYear()
+  if (today.getMonth() < birth.getMonth() ||
+      (today.getMonth() === birth.getMonth() && today.getDate() < birth.getDate())) age--
+  return age
+}
+
+/**
+ * Retorna el rango de edad que corresponde al miembro, o null si no aplica.
+ * ageRanges: [{ name, min, max }]
+ */
+export function getAgeRange(birthDate, ageRanges) {
+  if (!ageRanges?.length) return null
+  const age = getAge(birthDate)
+  if (age === null) return null
+  return ageRanges.find(r => age >= Number(r.min) && age <= Number(r.max)) || null
+}
+
+/**
  * Calcula las estadísticas de asistencia de una reunión de forma centralizada.
  * - Solo cuenta miembros activos del grupo con joinDate <= fecha de la reunión.
  * - Cuenta 'present' y 'late' como asistencia (compatibilidad con datos viejos).

@@ -1,5 +1,5 @@
 import { useState, useEffect, useMemo, useRef } from 'react'
-import { collection, getDocs, doc, addDoc, updateDoc } from 'firebase/firestore'
+import { collection, getDocs, doc, addDoc, updateDoc, getDoc } from 'firebase/firestore'
 import { db } from '../firebase'
 import { useAuth } from '../context/AuthContext'
 import { useNavigate } from 'react-router-dom'
@@ -14,6 +14,7 @@ import {
   Phone, NotePencil, UserPlus, DownloadSimple, FileArrowUp, SpinnerGap
 } from '@phosphor-icons/react'
 import { generateMembersTemplate, parseMembersFromExcel } from '../utils/excel'
+import { getAgeRange } from '../utils/members'
 import { todayStr, formatDateShort, localDateStr } from '../utils/dates'
 
 const SPIRITUAL_LABEL = {
@@ -80,9 +81,12 @@ export default function Members() {
   const [groups,       setGroups]       = useState([])
   const [loading,      setLoading]      = useState(true)
   const [search,       setSearch]       = useState('')
-  const [filterGroup,  setFilterGroup]  = useState('')
-  const [filterStatus, setFilterStatus] = useState('')
-  const [filterActive, setFilterActive] = useState('true')
+  const [filterGroup,    setFilterGroup]    = useState('')
+  const [filterStatus,   setFilterStatus]   = useState('')
+  const [filterActive,   setFilterActive]   = useState('true')
+  const [filterAgeRange, setFilterAgeRange] = useState('')
+  const [filterSex,      setFilterSex]      = useState('')
+  const [ageRanges,      setAgeRanges]      = useState([])
   const [showFilters,  setShowFilters]  = useState(false)
 
   // Import
@@ -100,11 +104,13 @@ export default function Members() {
   async function loadData() {
     setLoading(true)
     try {
-      const [mSnap, gSnap, vSnap] = await Promise.all([
+      const [mSnap, gSnap, vSnap, cfgSnap] = await Promise.all([
         getDocs(collection(db, 'members')),
         getDocs(collection(db, 'groups')),
         getDocs(collection(db, 'visitors')),
+        getDoc(doc(db, 'config', 'general')),
       ])
+      setAgeRanges(cfgSnap.exists() ? (cfgSnap.data().ageRanges || []) : [])
 
       let mems = mSnap.docs.map(d => ({ id: d.id, ...d.data() }))
       let vis  = vSnap.docs.map(d => ({ id: d.id, ...d.data() }))
@@ -136,13 +142,14 @@ export default function Members() {
       const matchSearch = !q ||
         (p.fullName || '').toLowerCase().includes(q) ||
         (p.phone || '').includes(q)
-      const matchGroup  = !filterGroup  || p.groupId === filterGroup ||
-        (p._data?.groupIds || []).includes(filterGroup)
-      const matchStatus = !filterStatus || p.spiritualStatus === filterStatus
-      const matchActive = filterActive === '' || String(p.active) === filterActive
-      return matchSearch && matchGroup && matchStatus && matchActive
+      const matchGroup    = !filterGroup    || p.groupId === filterGroup || (p._data?.groupIds || []).includes(filterGroup)
+      const matchStatus   = !filterStatus   || p.spiritualStatus === filterStatus
+      const matchActive   = filterActive === '' || String(p.active) === filterActive
+      const matchSex      = !filterSex      || p._data?.sex === filterSex
+      const matchAgeRange = !filterAgeRange || getAgeRange(p._data?.birthDate, ageRanges)?.name === filterAgeRange
+      return matchSearch && matchGroup && matchStatus && matchActive && matchSex && matchAgeRange
     })
-  }, [people, search, filterGroup, filterStatus, filterActive])
+  }, [people, search, filterGroup, filterStatus, filterActive, filterSex, filterAgeRange, ageRanges])
 
   const groupName = (id) => groups.find(g => g.id === id)?.name || ''
 
@@ -302,34 +309,35 @@ export default function Members() {
 
       {/* Filters */}
       {showFilters && (
-        <div className="px-4 pb-3 grid grid-cols-3 gap-2 animate-slide-up">
-          {[
-            {
-              value: filterGroup, setter: setFilterGroup,
-              opts: [['', 'Todos los grupos'], ...groups.map(g => [g.id, g.name])]
-            },
-            {
-              value: filterStatus, setter: setFilterStatus,
-              opts: [
-                ['', 'Todos'],
-                ['new', 'Nuevo'],
-                ['following', 'En seguimiento'],
-                ['consolidated', 'Consolidado'],
-                ['member', 'Miembro'],
-                ['leader', 'Líder'],
-              ]
-            },
-            {
-              value: filterActive, setter: setFilterActive,
-              opts: [['true', 'Activos'], ['false', 'Inactivos'], ['', 'Todos']]
-            },
-          ].map((f, i) => (
-            <select key={i} value={f.value} onChange={e => f.setter(e.target.value)}
+        <div className="px-4 pb-3 flex flex-col gap-2 animate-slide-up">
+          <div className="grid grid-cols-3 gap-2">
+            {[
+              { value: filterGroup,  setter: setFilterGroup,  opts: [['', 'Todos los grupos'], ...groups.map(g => [g.id, g.name])] },
+              { value: filterStatus, setter: setFilterStatus, opts: [['','Todos'], ['new','Nuevo'], ['following','Seguimiento'], ['consolidated','Consolidado'], ['member','Miembro'], ['leader','Líder']] },
+              { value: filterActive, setter: setFilterActive, opts: [['true','Activos'], ['false','Inactivos'], ['','Todos']] },
+            ].map((f, i) => (
+              <select key={i} value={f.value} onChange={e => f.setter(e.target.value)}
+                className="rounded-[9px] px-3 py-2 text-xs font-medium outline-none"
+                style={{ background: 'var(--surface)', border: '1px solid var(--border)', color: 'var(--text)', fontFamily: 'inherit' }}>
+                {f.opts.map(([v, l]) => <option key={v} value={v}>{l}</option>)}
+              </select>
+            ))}
+          </div>
+          <div className="grid grid-cols-2 gap-2">
+            <select value={filterSex} onChange={e => setFilterSex(e.target.value)}
               className="rounded-[9px] px-3 py-2 text-xs font-medium outline-none"
               style={{ background: 'var(--surface)', border: '1px solid var(--border)', color: 'var(--text)', fontFamily: 'inherit' }}>
-              {f.opts.map(([v, l]) => <option key={v} value={v}>{l}</option>)}
+              <option value="">Todos los sexos</option>
+              <option value="male">Masculino</option>
+              <option value="female">Femenino</option>
             </select>
-          ))}
+            <select value={filterAgeRange} onChange={e => setFilterAgeRange(e.target.value)}
+              className="rounded-[9px] px-3 py-2 text-xs font-medium outline-none"
+              style={{ background: 'var(--surface)', border: '1px solid var(--border)', color: 'var(--text)', fontFamily: 'inherit' }}>
+              <option value="">Todos los rangos</option>
+              {ageRanges.map(r => <option key={r.name} value={r.name}>{r.name}</option>)}
+            </select>
+          </div>
         </div>
       )}
 
@@ -370,6 +378,18 @@ export default function Members() {
                         {SPIRITUAL_LABEL[p.spiritualStatus] || p.spiritualStatus}
                       </span>
                     )}
+                    {p._data?.sex && (
+                      <span className="text-[10px] font-bold"
+                        style={{ color: p._data.sex === 'male' ? 'var(--accent)' : '#ec4899' }}>
+                        {p._data.sex === 'male' ? 'Masc' : 'Fem'}
+                      </span>
+                    )}
+                    {(() => { const r = getAgeRange(p._data?.birthDate, ageRanges); return r ? (
+                      <span className="text-[10px] font-bold px-1.5 py-0.5 rounded-[4px]"
+                        style={{ background: 'rgba(139,92,246,0.1)', color: '#8b5cf6', border: '1px solid rgba(139,92,246,0.2)' }}>
+                        {r.name}
+                      </span>
+                    ) : null })()}
                     {p._source === 'visitor' && (
                       <span className="text-[10px] font-bold px-1.5 py-0.5 rounded-[4px]"
                         style={{ background: 'rgba(59,130,246,0.1)', color: 'var(--text-3)', border: '1px solid var(--border)' }}>

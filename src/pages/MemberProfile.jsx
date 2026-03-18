@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react'
 import { doc, getDoc, collection, getDocs } from 'firebase/firestore'
+import { getAgeRange } from '../utils/members'
 import { db } from '../firebase'
 import { useParams, useNavigate } from 'react-router-dom'
 import { useAuth } from '../context/AuthContext'
@@ -18,10 +19,11 @@ export default function MemberProfile() {
   const navigate    = useNavigate()
   const isAdmin     = profile?.role === 'admin' || profile?.role === 'super_admin'
 
-  const [member,  setMember]  = useState(null)
-  const [history, setHistory] = useState([])
-  const [loading, setLoading] = useState(true)
-  const [groups,  setGroups]  = useState([])
+  const [member,    setMember]    = useState(null)
+  const [history,   setHistory]   = useState([])
+  const [loading,   setLoading]   = useState(true)
+  const [groups,    setGroups]    = useState([])
+  const [ageRanges, setAgeRanges] = useState([])
 
   useEffect(() => { loadData() }, [id])
 
@@ -34,10 +36,12 @@ export default function MemberProfile() {
       setMember(m)
 
       const groupIds = m.groupIds?.length > 0 ? m.groupIds : (m.groupId ? [m.groupId] : [])
-      if (groupIds.length > 0) {
-        const gSnaps = await Promise.all(groupIds.map(gid => getDoc(doc(db, 'groups', gid))))
-        setGroups(gSnaps.filter(s => s.exists()).map(s => ({ id: s.id, ...s.data() })))
-      }
+      const [gSnaps, cfgSnap] = await Promise.all([
+        Promise.all(groupIds.map(gid => getDoc(doc(db, 'groups', gid)))),
+        getDoc(doc(db, 'config', 'general')),
+      ])
+      setGroups(gSnaps.filter(s => s.exists()).map(s => ({ id: s.id, ...s.data() })))
+      setAgeRanges(cfgSnap.exists() ? (cfgSnap.data().ageRanges || []) : [])
 
       // Attendance history for this member
       const attSnap = await getDocs(collection(db, 'attendance'))
@@ -64,6 +68,7 @@ export default function MemberProfile() {
   )
   if (!member) return null
 
+  const ageRange = getAgeRange(member.birthDate, ageRanges)
   const present  = history.filter(h => h.status === 'present' || h.status === 'late').length
   const pct      = history.length > 0 ? Math.round((present / history.length) * 100) : 0
   const pctColor = pct >= 70 ? 'var(--green)' : pct >= 40 ? 'var(--amber)' : 'var(--red)'
@@ -97,6 +102,18 @@ export default function MemberProfile() {
           {groups.map(g => (
             <span key={g.id} className="text-[11px]" style={{ color: 'var(--text-3)' }}>{g.name}</span>
           ))}
+          {member.sex && (
+            <span className="text-[11px] font-bold px-2.5 py-1 rounded-full"
+              style={{ background: member.sex === 'male' ? 'rgba(59,130,246,0.15)' : 'rgba(236,72,153,0.12)', color: member.sex === 'male' ? 'var(--accent)' : '#ec4899' }}>
+              {member.sex === 'male' ? 'Masculino' : 'Femenino'}
+            </span>
+          )}
+          {ageRange && (
+            <span className="text-[11px] font-bold px-2.5 py-1 rounded-full"
+              style={{ background: 'rgba(139,92,246,0.12)', color: '#8b5cf6' }}>
+              {ageRange.name}
+            </span>
+          )}
           {member.active === false && (
             <span className="text-[11px] font-bold px-2.5 py-1 rounded-full" style={{ background: 'var(--red-bg)', color: 'var(--red)' }}>Inactivo</span>
           )}

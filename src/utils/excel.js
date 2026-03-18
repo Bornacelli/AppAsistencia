@@ -1,4 +1,5 @@
 import * as XLSX from 'xlsx-js-style'
+import { getAge, getAgeRange } from './members'
 
 // ─── Design tokens ────────────────────────────────────────────────────────────
 const C = {
@@ -156,21 +157,57 @@ export function exportInvitationRanking(ranking, groupName = 'Todos') {
 }
 
 // ─── Lista de personas ────────────────────────────────────────────────────────
-export function exportMembersList(members, groupName = 'Todos') {
+const SEX_LABEL = { male: 'Masculino', female: 'Femenino' }
+
+export function exportMembersList(members, groupName = 'Todos', ageRanges = []) {
   const statusLabel = { new: 'Nuevo', following: 'En seguimiento', consolidated: 'Consolidado', member: 'Miembro', leader: 'Líder' }
-  const headers = ['Nombre', 'Teléfono', 'Dirección', 'F. Nacimiento', 'F. Ingreso', 'Estado espiritual', 'Grupo', 'Invitado por']
-  const rows = members.map(m => [
-    m.fullName  || '',
-    m.phone     || '',
-    m.address   || '',
-    m.birthDate || '',
-    m.joinDate  || '',
-    statusLabel[m.spiritualStatus] || m.spiritualStatus || '',
-    m._groupName || '',
-    m.referredBy || '',
-  ])
+  const headers = ['Nombre', 'Sexo', 'Edad', 'Rango de edad', 'Teléfono', 'Dirección', 'F. Nacimiento', 'F. Ingreso', 'Estado espiritual', 'Grupo', 'Invitado por']
+  const rows = members.map(m => {
+    const age   = getAge(m.birthDate)
+    const range = getAgeRange(m.birthDate, ageRanges)
+    return [
+      m.fullName  || '',
+      SEX_LABEL[m.sex] || '',
+      age !== null ? age : '',
+      range?.name || '',
+      m.phone     || '',
+      m.address   || '',
+      m.birthDate || '',
+      m.joinDate  || '',
+      statusLabel[m.spiritualStatus] || m.spiritualStatus || '',
+      m._groupName || '',
+      m.referredBy || '',
+    ]
+  })
   const filename = groupName === 'Todos' ? 'Lista_Personas_Total' : `Lista_Personas_${groupName.replace(/\s+/g, '_')}`
-  exportToExcel(filename, `Personas — ${groupName}`, headers, rows, null, [30, 16, 24, 14, 14, 20, 20, 24])
+  exportToExcel(filename, `Personas — ${groupName}`, headers, rows, null, [30, 10, 8, 18, 16, 24, 14, 14, 20, 20, 24])
+}
+
+// ─── Clasificación por rangos de edad ────────────────────────────────────────
+export function exportAgeRangeList(members, ageRanges, groupName = 'Todos') {
+  const headers = ['Nombre', 'Sexo', 'Edad', 'Teléfono', 'F. Nacimiento']
+  const wb = XLSX.utils.book_new()
+  const rangesWithFallback = [...ageRanges, { name: 'Sin clasificar', _special: true }]
+  rangesWithFallback.forEach(range => {
+    const rangeMembers = range._special
+      ? members.filter(m => !getAgeRange(m.birthDate, ageRanges))
+      : members.filter(m => getAgeRange(m.birthDate, ageRanges)?.name === range.name)
+    if (rangeMembers.length === 0) return
+    const rows = rangeMembers
+      .sort((a, b) => (a.fullName || '').localeCompare(b.fullName || '', 'es'))
+      .map(m => [
+        m.fullName       || '',
+        SEX_LABEL[m.sex] || '',
+        getAge(m.birthDate) ?? '',
+        m.phone          || '',
+        m.birthDate      || '',
+      ])
+    const sheetName = range.name.slice(0, 31)
+    XLSX.utils.book_append_sheet(wb, buildSheet(sheetName, headers, rows, null, [30, 10, 8, 16, 14]), sheetName)
+  })
+  if (wb.SheetNames.length === 0) return
+  const filename = groupName === 'Todos' ? 'Clasificacion_Edades' : `Clasificacion_Edades_${groupName.replace(/\s+/g, '_')}`
+  XLSX.writeFile(wb, `${filename}.xlsx`)
 }
 
 // ─── Plantilla de importación ─────────────────────────────────────────────────

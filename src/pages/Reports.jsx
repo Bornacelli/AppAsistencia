@@ -1,5 +1,5 @@
 import { useState, useEffect, useMemo } from 'react'
-import { collection, getDocs } from 'firebase/firestore'
+import { collection, getDocs, doc, getDoc } from 'firebase/firestore'
 import { db } from '../firebase'
 import { useAuth } from '../context/AuthContext'
 import { useNavigate } from 'react-router-dom'
@@ -9,8 +9,9 @@ import {
   DownloadSimple, ChartBar, Users, Trophy, Star, ListBullets, HandHeart, CaretDown, CaretUp, ArrowClockwise
 } from '@phosphor-icons/react'
 import {
-  exportRankingReport, exportMembersList, exportMeetingAttendeesList, exportInvitationRanking
+  exportRankingReport, exportMembersList, exportMeetingAttendeesList, exportInvitationRanking, exportAgeRangeList
 } from '../utils/excel'
+import { getAgeRange } from '../utils/members'
 import { localDateStr, todayStr, formatDateShort } from '../utils/dates'
 import { memberInGroup, memberInAnyGroup, meetingStats } from '../utils/members'
 import { usePersistedState } from '../hooks/usePersistedState'
@@ -20,10 +21,11 @@ export default function Reports() {
   const navigate = useNavigate()
   const isLeader = profile?.role === 'leader'
 
-  const [records,  setRecords]  = useState([])
-  const [members,  setMembers]  = useState([])
-  const [groups,   setGroups]   = useState([])
-  const [loading,  setLoading]  = useState(true)
+  const [records,   setRecords]   = useState([])
+  const [members,   setMembers]   = useState([])
+  const [groups,    setGroups]    = useState([])
+  const [ageRanges, setAgeRanges] = useState([])
+  const [loading,   setLoading]   = useState(true)
   const [selGroup,  setSelGroup]  = usePersistedState('rep_group', '')
   const [dateFrom,  setDateFrom]  = usePersistedState('rep_from', localDateStr(new Date(Date.now() - 30 * 24 * 60 * 60 * 1000)))
   const [dateTo,    setDateTo]    = usePersistedState('rep_to',   todayStr())
@@ -32,19 +34,22 @@ export default function Reports() {
   const [expandedMeetings, setExpandedMeetings] = useState(new Set())
 
   // Listas tab state
-  const [listGroup,   setListGroup]   = usePersistedState('rep_list_group', '')
-  const [listMeeting, setListMeeting] = useState('')
+  const [listGroup,      setListGroup]      = usePersistedState('rep_list_group', '')
+  const [listMeeting,    setListMeeting]    = useState('')
+  const [ageRangeGroup,  setAgeRangeGroup]  = usePersistedState('rep_age_group', '')
 
   useEffect(() => { loadData() }, [])
 
   async function loadData() {
     setLoading(true)
     try {
-      const [aSnap, mSnap, gSnap] = await Promise.all([
+      const [aSnap, mSnap, gSnap, cfgSnap] = await Promise.all([
         getDocs(collection(db, 'attendance')),
         getDocs(collection(db, 'members')),
         getDocs(collection(db, 'groups')),
+        getDoc(doc(db, 'config', 'general')),
       ])
+      setAgeRanges(cfgSnap.exists() ? (cfgSnap.data().ageRanges || []) : [])
       const recs = aSnap.docs.map(d => ({ id: d.id, ...d.data() }))
       recs.sort((a, b) => (b.date || '').localeCompare(a.date || ''))
       setRecords(recs)
@@ -160,6 +165,17 @@ export default function Reports() {
     const grpMap = Object.fromEntries(groups.map(g => [g.id, g.name]))
     return mems.map(m => ({ ...m, _groupName: grpMap[m.groupId] || '' }))
   }, [members, groups, listGroup, isLeader, profile])
+
+  const ageRangeMembers = useMemo(() => {
+    const leaderGroupIds = isLeader ? (profile?.groupIds || []) : null
+    const mems = ageRangeGroup
+      ? members.filter(m => memberInGroup(m, ageRangeGroup) && m.active !== false)
+      : leaderGroupIds
+        ? members.filter(m => memberInAnyGroup(m, leaderGroupIds) && m.active !== false)
+        : members.filter(m => m.active !== false)
+    const grpMap = Object.fromEntries(groups.map(g => [g.id, g.name]))
+    return mems.map(m => ({ ...m, _groupName: grpMap[m.groupId] || '' }))
+  }, [members, groups, ageRangeGroup, isLeader, profile])
 
   const selectedMeetingRecord = useMemo(() => {
     if (!listMeeting) return null
@@ -554,7 +570,7 @@ export default function Reports() {
                         ...m,
                         _groupName: groups.find(g => g.id === m.groupId)?.name || ''
                       })),
-                      'Todos'
+                      'Todos', ageRanges
                     )}
                     className="h-11 rounded-[10px] font-bold text-sm flex items-center justify-center gap-2 press"
                     style={{ background: 'rgba(59,130,246,0.12)', color: 'var(--accent)', border: '1px solid rgba(59,130,246,0.25)' }}>
@@ -587,7 +603,7 @@ export default function Reports() {
                     disabled={!listGroup}
                     onClick={() => {
                       const grp = groups.find(g => g.id === listGroup)
-                      exportMembersList(listGroupMembers, grp?.name || listGroup)
+                      exportMembersList(listGroupMembers, grp?.name || listGroup, ageRanges)
                     }}
                     className="h-11 rounded-[10px] font-bold text-sm flex items-center justify-center gap-2 press"
                     style={{
@@ -599,7 +615,66 @@ export default function Reports() {
                   </button>
                 </div>
 
-                {/* Section 3: Attendees of a specific meeting */}
+                {/* Section 3: Members by age range */}
+                {ageRanges.length > 0 && (
+                  <div className="flex flex-col gap-3 p-4 rounded-[14px]"
+                    style={{ background: 'var(--surface)', border: '1px solid var(--border)' }}>
+                    <div className="flex items-center gap-2">
+                      <Users size={16} style={{ color: '#8b5cf6', flexShrink: 0 }} />
+                      <p className="text-sm font-bold" style={{ color: 'var(--text)' }}>Clasificación por rango de edad</p>
+                    </div>
+                    <p className="text-xs" style={{ color: 'var(--text-2)' }}>
+                      Muestra y exporta los miembros clasificados por rango de edad. Los que no tienen fecha de nacimiento quedan fuera.
+                    </p>
+                    <select value={ageRangeGroup} onChange={e => setAgeRangeGroup(e.target.value)}
+                      className="w-full rounded-[10px] px-3 py-2.5 text-sm font-medium outline-none"
+                      style={{ background: 'var(--card)', border: '1px solid var(--border)', color: 'var(--text)', fontFamily: 'inherit' }}>
+                      {!isLeader && <option value="">Todos los grupos</option>}
+                      {groups.map(g => <option key={g.id} value={g.id}>{g.name}</option>)}
+                    </select>
+                    {/* Breakdown */}
+                    <div className="flex flex-col gap-1.5">
+                      {ageRanges.map(r => {
+                        const count = ageRangeMembers.filter(m => getAgeRange(m.birthDate, ageRanges)?.name === r.name).length
+                        return (
+                          <div key={r.name} className="flex items-center gap-2 px-3 py-2 rounded-[9px]"
+                            style={{ background: 'var(--card)', border: '1px solid var(--border)' }}>
+                            <span className="flex-1 text-sm font-semibold" style={{ color: 'var(--text)' }}>{r.name}</span>
+                            <span className="text-xs font-bold" style={{ color: 'var(--text-2)' }}>{r.min}–{r.max} años</span>
+                            <span className="text-sm font-extrabold" style={{ color: '#8b5cf6' }}>{count}</span>
+                          </div>
+                        )
+                      })}
+                      {(() => {
+                        const unclassified = ageRangeMembers.filter(m => !getAgeRange(m.birthDate, ageRanges)).length
+                        return unclassified > 0 ? (
+                          <div className="flex items-center gap-2 px-3 py-2 rounded-[9px]"
+                            style={{ background: 'var(--card)', border: '1px solid var(--border)' }}>
+                            <span className="flex-1 text-sm" style={{ color: 'var(--text-3)' }}>Sin clasificar</span>
+                            <span className="text-sm font-extrabold" style={{ color: 'var(--text-3)' }}>{unclassified}</span>
+                          </div>
+                        ) : null
+                      })()}
+                    </div>
+                    <button
+                      disabled={ageRangeMembers.length === 0}
+                      onClick={() => {
+                        const grp = groups.find(g => g.id === ageRangeGroup)
+                        exportAgeRangeList(ageRangeMembers, ageRanges, grp?.name || 'Todos')
+                      }}
+                      className="h-11 rounded-[10px] font-bold text-sm flex items-center justify-center gap-2 press"
+                      style={{
+                        background: 'rgba(139,92,246,0.12)',
+                        color: '#8b5cf6',
+                        border: '1px solid rgba(139,92,246,0.25)',
+                        opacity: listGroupMembers.length === 0 ? 0.5 : 1,
+                      }}>
+                      <DownloadSimple size={16} /> Exportar clasificación por edades
+                    </button>
+                  </div>
+                )}
+
+                {/* Section 4: Attendees of a specific meeting */}
                 <div className="flex flex-col gap-3 p-4 rounded-[14px]"
                   style={{ background: 'var(--surface)', border: '1px solid var(--border)' }}>
                   <div className="flex items-center gap-2">

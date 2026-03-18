@@ -127,6 +127,7 @@ export default function MemberForm() {
 
   const [form, setForm] = useState({
     fullName:        fromVisitor?.name  || '',
+    sex:             '',
     birthDate:       '',
     phone:           fromVisitor?.phone || '',
     address:         '',
@@ -190,6 +191,7 @@ export default function MemberForm() {
         const d = snap.data()
         setForm({
           fullName:        d.fullName        || '',
+          sex:             d.sex             || '',
           birthDate:       d.birthDate       || '',
           phone:           d.phone           || '',
           address:         d.address         || '',
@@ -219,6 +221,7 @@ export default function MemberForm() {
     try {
       const data = {
         fullName:        form.fullName.trim(),
+        sex:             form.sex || null,
         birthDate:       form.birthDate || null,
         phone:           form.phone.trim() || null,
         address:         form.address.trim() || null,
@@ -260,7 +263,25 @@ export default function MemberForm() {
 
       <form onSubmit={handleSubmit} className="flex flex-col gap-4 px-4 py-4">
         <Inp label="Nombre completo *" value={form.fullName} onChange={e => set('fullName', e.target.value)} placeholder="Juan Pablo García" autoCapitalize="words" error={errors.fullName} />
-       {/* <Inp label="Nombre corto" value={form.shortName} onChange={e => set('shortName', e.target.value)} placeholder="Juanpa (opcional)" /> */}  
+
+        <div className="flex flex-col gap-1.5">
+          <p className="text-xs font-bold uppercase tracking-widest" style={{ color: 'var(--text-2)' }}>Sexo</p>
+          <div className="flex gap-2">
+            {[['male', 'Masculino', 'rgba(59,130,246,0.15)', 'var(--accent)', 'rgba(59,130,246,0.3)'],
+              ['female', 'Femenino', 'rgba(236,72,153,0.12)', '#ec4899', 'rgba(236,72,153,0.3)']].map(([val, label, bg, color, border]) => (
+              <button key={val} type="button" onClick={() => set('sex', form.sex === val ? '' : val)}
+                className="flex-1 py-2.5 rounded-[10px] text-sm font-bold press"
+                style={{
+                  background: form.sex === val ? bg : 'var(--surface)',
+                  color:      form.sex === val ? color : 'var(--text-2)',
+                  border:     `1px solid ${form.sex === val ? border : 'var(--border)'}`,
+                }}>
+                {label}
+              </button>
+            ))}
+          </div>
+        </div>
+
         <Inp label="Fecha de nacimiento" type="date" value={form.birthDate} onChange={e => set('birthDate', e.target.value)} style={{ colorScheme: 'dark' }} />
         <Inp label="WhatsApp" type="tel" value={form.phone} onChange={e => set('phone', e.target.value)} placeholder="+57 300 000 0000" />
         <Inp label="Dirección" value={form.address} onChange={e => set('address', e.target.value)} placeholder="Barrio, ciudad" />

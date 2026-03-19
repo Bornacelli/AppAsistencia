@@ -128,7 +128,6 @@ src/
 │   ├── Members.jsx
 │   ├── MemberForm.jsx
 │   ├── MemberProfile.jsx
-│   ├── Visitors.jsx
 │   ├── Leaders.jsx
 │   ├── History.jsx
 │   ├── Reports.jsx

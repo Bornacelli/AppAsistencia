@@ -73,9 +73,6 @@ export default function App() {
         <Route path="/members/:id" element={
           <ProtectedRoute><MemberProfile /></ProtectedRoute>
         } />
-        <Route path="/visitors" element={
-          <ProtectedRoute><Visitors /></ProtectedRoute>
-        } />
         <Route path="/leaders" element={
           <ProtectedRoute roles={['super_admin', 'admin']}><Leaders /></ProtectedRoute>
         } />

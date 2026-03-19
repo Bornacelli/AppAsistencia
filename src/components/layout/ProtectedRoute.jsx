@@ -45,8 +45,10 @@ export default function ProtectedRoute({ children, roles }) {
 
   return (
     <div className="flex flex-col min-h-dvh" style={{ background: 'var(--bg)' }}>
-      <div className="flex-1 pb-20">
-        {children}
+      <div className="flex-1 pb-20 md:pb-0 md:ml-[200px]">
+        <div className="md:max-w-[900px] md:mx-auto">
+          {children}
+        </div>
       </div>
       <BottomNav />
     </div>

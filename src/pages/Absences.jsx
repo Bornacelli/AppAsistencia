@@ -50,7 +50,8 @@ export default function Absences() {
       }
       allAttDocs.sort((a, b) => (b.date || '').localeCompare(a.date || ''))
 
-      setGroups(gSnap.docs.map(d => ({ id: d.id, ...d.data() })))
+      const allGrps = gSnap.docs.map(d => ({ id: d.id, ...d.data() }))
+      setGroups(isAdmin ? allGrps : allGrps.filter(g => (profile?.groupIds || []).includes(g.id)))
 
       // Only look at meetings where the member has an explicit record (avoids joinDate false negatives)
       const result = []

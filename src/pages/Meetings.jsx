@@ -35,12 +35,13 @@ export default function Meetings() {
       ])
       let recs = aSnap.docs.map(d => ({ id: d.id, ...d.data() }))
       let mems = mSnap.docs.map(d => ({ id: d.id, ...d.data() }))
-      const grps = gSnap.docs.map(d => ({ id: d.id, ...d.data() }))
+      let grps = gSnap.docs.map(d => ({ id: d.id, ...d.data() }))
 
       if (!isAdmin) {
         const gids = profile?.groupIds || []
         recs = recs.filter(r => gids.includes(r.groupId))
         mems = mems.filter(m => memberInAnyGroup(m, gids))
+        grps = grps.filter(g => gids.includes(g.id))
       }
 
       recs.sort((a, b) => (b.date || '').localeCompare(a.date || ''))

@@ -35,7 +35,8 @@ export default function Birthdays() {
         mems = mems.filter(m => memberInAnyGroup(m, gids))
       }
       setMembers(mems)
-      setGroups(gSnap.docs.map(d => ({ id: d.id, ...d.data() })))
+      const allGrps = gSnap.docs.map(d => ({ id: d.id, ...d.data() }))
+      setGroups(isAdmin ? allGrps : allGrps.filter(g => (profile?.groupIds || []).includes(g.id)))
     } catch (e) { console.error(e) }
     finally { setLoading(false) }
   }
@@ -82,7 +83,12 @@ export default function Birthdays() {
       {/* Header */}
       <div className="sticky top-0 z-10 flex items-center justify-between px-4 py-3"
         style={{ background: 'var(--surface)', borderBottom: '1px solid var(--border)', paddingTop: 'max(12px, env(safe-area-inset-top))' }}>
-        <h1 className="font-syne font-extrabold text-[17px]" style={{ color: 'var(--text)' }}>Cumpleaños</h1>
+        <div>
+          <h1 className="font-syne font-extrabold text-[17px]" style={{ color: 'var(--text)' }}>Cumpleaños</h1>
+          {!loading && sorted.length > 0 && (
+            <p className="text-xs mt-0.5" style={{ color: 'var(--text-2)' }}>{sorted.length} persona{sorted.length !== 1 ? 's' : ''} en la lista</p>
+          )}
+        </div>
         {todayMembers.length > 0 && (
           <span className="text-xs font-bold px-2.5 py-1 rounded-full"
             style={{ background: 'var(--amber-bg)', color: 'var(--amber)', border: '1px solid var(--amber-bdr)' }}>

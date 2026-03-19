@@ -137,8 +137,9 @@ export default function Attendance() {
       // Extra members: from other groups already in this attendance record
       // For past dates, exclude members who hadn't joined yet
       const recordedIds = Object.keys(initAtt)
+      const groupAllIds = new Set([...groupMems.map(m => m.id), ...inactiveGroupMems.map(m => m.id)])
       const extra = all.filter(m =>
-        !groupMems.some(gm => gm.id === m.id) &&
+        !groupAllIds.has(m.id) &&
         recordedIds.includes(m.id) &&
         (!isPast || !m.joinDate || m.joinDate <= selDate)
       )
@@ -280,7 +281,7 @@ export default function Attendance() {
   const filteredOtherGroups = useMemo(() => {
     if (!search.trim()) return []
     const q = search.toLowerCase()
-    const currentIds = new Set([...members.map(m => m.id), ...extraMembers.map(m => m.id)])
+    const currentIds = new Set([...members.map(m => m.id), ...extraMembers.map(m => m.id), ...inactiveMembers.map(m => m.id)])
     return allMembers.filter(m =>
       !currentIds.has(m.id) && (
         (m.fullName || '').toLowerCase().includes(q) ||
@@ -299,12 +300,12 @@ export default function Attendance() {
     filteredGroup.length === 0 && filteredOtherGroups.length === 0
 
   const counts = useMemo(() => {
-    const v = Object.values(attendance)
+    const activeMemberIds = new Set(members.map(m => m.id))
     return {
-      present: v.filter(x => x === 'present').length,
-      absent:  v.filter(x => x === 'absent').length,
+      present: Object.entries(attendance).filter(([id, v]) => activeMemberIds.has(id) && v === 'present').length,
+      absent:  Object.entries(attendance).filter(([id, v]) => activeMemberIds.has(id) && v === 'absent').length,
     }
-  }, [attendance])
+  }, [attendance, members])
 
   async function handleAddMember() {
     const name = newName.trim() || search.trim()
@@ -463,7 +464,7 @@ export default function Attendance() {
       </div>
 
       {/* Members list */}
-      <div className="flex-1 px-4 pb-4">
+      <div className="flex-1 px-4 pb-28">
         {loading ? <LoadingSpinner /> : (
           <>
             {/* No-meeting banner for past dates */}
@@ -594,7 +595,7 @@ export default function Attendance() {
       </div>
 
       {/* Bottom counter (no save button) */}
-      <div className="fixed bottom-[64px] left-0 right-0 z-20 flex items-center justify-center gap-8 px-4 py-3"
+      <div className="fixed bottom-[64px] md:bottom-0 left-0 md:left-[200px] right-0 z-20 flex items-center justify-center gap-8 px-4 py-3"
         style={{ background: 'var(--surface)', borderTop: '1px solid var(--border)', paddingBottom: 'max(12px, env(safe-area-inset-bottom))' }}>
         <div className="flex flex-col items-center gap-0.5">
           <span className="font-syne font-extrabold text-3xl" style={{ color: 'var(--green)' }}>{counts.present}</span>

@@ -134,9 +134,9 @@ export function exportVisitorsReport(visitors) {
 
 // ─── Ranking de asistencia ────────────────────────────────────────────────────
 export function exportRankingReport(ranking) {
-  const headers = ['#', 'Nombre', 'Total Reuniones', 'Asistencias', '% Asistencia']
-  const rows = ranking.map((r, i) => [i + 1, r.name, r.total, r.present, `${r.pct}%`])
-  exportToExcel('Ranking_Asistencia', 'Ranking de Asistencia', headers, rows, null, [6, 30, 18, 16, 16])
+  const headers = ['#', 'Nombre', 'Total Reuniones', 'Asistencias']
+  const rows = ranking.map((r, i) => [i + 1, r.name, r.total, r.present])
+  exportToExcel('Ranking_Asistencia', 'Ranking de Asistencia', headers, rows, null, [6, 30, 18, 16])
 }
 
 // ─── Ranking de invitaciones ──────────────────────────────────────────────────
@@ -159,28 +159,41 @@ export function exportInvitationRanking(ranking, groupName = 'Todos') {
 // ─── Lista de personas ────────────────────────────────────────────────────────
 const SEX_LABEL = { male: 'Masculino', female: 'Femenino' }
 
-export function exportMembersList(members, groupName = 'Todos', ageRanges = []) {
+export function exportMembersList(members, groupName = 'Todos', ageRanges = [], inactiveMembers = []) {
   const statusLabel = { new: 'Nuevo', following: 'En seguimiento', consolidated: 'Consolidado', member: 'Miembro', leader: 'Líder' }
-  const headers = ['Nombre', 'Sexo', 'Edad', 'Rango de edad', 'Teléfono', 'Dirección', 'F. Nacimiento', 'F. Ingreso', 'Estado espiritual', 'Grupo', 'Invitado por']
-  const rows = members.map(m => {
-    const age   = getAge(m.birthDate)
-    const range = getAgeRange(m.birthDate, ageRanges)
-    return [
-      m.fullName  || '',
-      SEX_LABEL[m.sex] || '',
-      age !== null ? age : '',
-      range?.name || '',
-      m.phone     || '',
-      m.address   || '',
-      m.birthDate || '',
-      m.joinDate  || '',
-      statusLabel[m.spiritualStatus] || m.spiritualStatus || '',
-      m._groupName || '',
-      m.referredBy || '',
-    ]
-  })
+  const headers   = ['Nombre', 'Sexo', 'Edad', 'Rango de edad', 'Teléfono', 'Dirección', 'F. Nacimiento', 'F. Ingreso', 'Estado espiritual', 'Grupo', 'Invitado por']
+  const colWidths = [30, 10, 8, 18, 16, 24, 14, 14, 20, 20, 24]
+
+  function buildRows(mems) {
+    return mems.map(m => {
+      const age   = getAge(m.birthDate)
+      const range = getAgeRange(m.birthDate, ageRanges)
+      return [
+        m.fullName   || '',
+        SEX_LABEL[m.sex] || '',
+        age !== null ? age : '',
+        range?.name  || '',
+        m.phone      || '',
+        m.address    || '',
+        m.birthDate  || '',
+        m.joinDate   || '',
+        statusLabel[m.spiritualStatus] || m.spiritualStatus || '',
+        m._groupName || '',
+        m.referredBy || '',
+      ]
+    })
+  }
+
+  const wb = XLSX.utils.book_new()
+  const activeSheet = groupName === 'Todos' ? 'Activos' : groupName.slice(0, 31)
+  XLSX.utils.book_append_sheet(wb, buildSheet(activeSheet, headers, buildRows(members), null, colWidths), activeSheet)
+
+  if (inactiveMembers.length > 0) {
+    XLSX.utils.book_append_sheet(wb, buildSheet('Inactivos', headers, buildRows(inactiveMembers), null, colWidths), 'Inactivos')
+  }
+
   const filename = groupName === 'Todos' ? 'Lista_Personas_Total' : `Lista_Personas_${groupName.replace(/\s+/g, '_')}`
-  exportToExcel(filename, `Personas — ${groupName}`, headers, rows, null, [30, 10, 8, 18, 16, 24, 14, 14, 20, 20, 24])
+  XLSX.writeFile(wb, `${filename}.xlsx`)
 }
 
 // ─── Clasificación por rangos de edad ────────────────────────────────────────
@@ -331,6 +344,75 @@ export function parseMembersFromExcel(file, groups) {
     reader.onerror = reject
     reader.readAsArrayBuffer(file)
   })
+}
+
+// ─── Reporte mensual de asistencia por grupo ──────────────────────────────────
+export function exportMonthlyAttendance(members, meetings, groupName, monthLabel) {
+  function shortDate(str) {
+    if (!str) return ''
+    const [, m, d] = str.split('-')
+    return `${d}/${m}`
+  }
+
+  const headers = ['Nombre', ...meetings.map(r => shortDate(r.date)), 'Total', '%']
+  const N = headers.length
+
+  const rowData = members.map(m => {
+    let present = 0
+    const cells = meetings.map(r => {
+      const st = r.records?.[m.id]
+      const ok = st === 'present' || st === 'late'
+      if (ok) present++
+      return ok
+    })
+    const pct = meetings.length > 0 ? Math.round((present / meetings.length) * 100) : 0
+    return { member: m, cells, present, pct }
+  })
+
+  const ws = {}
+
+  // Cabeceras
+  headers.forEach((h, c) => { ws[XLSX.utils.encode_cell({ r: 0, c })] = headerCell(h) })
+
+  // Filas de datos
+  rowData.forEach(({ member, cells, present, pct }, ri) => {
+    const bg = ri % 2 === 0 ? C.rowEven : C.rowOdd
+    ws[XLSX.utils.encode_cell({ r: ri + 1, c: 0 })] = cell(member.fullName || '', { bg, fg: C.rowFg, align: 'left' })
+    cells.forEach((attended, ci) => {
+      ws[XLSX.utils.encode_cell({ r: ri + 1, c: ci + 1 })] = cell(
+        attended ? 'Sí' : 'No',
+        { bg: attended ? 'DCFCE7' : 'FEE2E2', fg: attended ? '166534' : '991B1B', align: 'center', bold: true }
+      )
+    })
+    ws[XLSX.utils.encode_cell({ r: ri + 1, c: meetings.length + 1 })] = cell(present, { bg, fg: C.rowFg, align: 'center' })
+    ws[XLSX.utils.encode_cell({ r: ri + 1, c: meetings.length + 2 })] = cell(
+      `${pct}%`,
+      { bg, fg: pct >= 70 ? '166534' : pct >= 40 ? '92400E' : '991B1B', align: 'center', bold: true }
+    )
+  })
+
+  // Fila de totales: % asistencia por reunión
+  const totalR = rowData.length + 1
+  ws[XLSX.utils.encode_cell({ r: totalR, c: 0 })] = totalCell('TOTALES', 'left')
+  meetings.forEach((r, ci) => {
+    const count = rowData.filter(row => row.cells[ci]).length
+    const pct   = rowData.length > 0 ? Math.round((count / rowData.length) * 100) : 0
+    ws[XLSX.utils.encode_cell({ r: totalR, c: ci + 1 })] = totalCell(`${pct}%`)
+  })
+  const avgPct = rowData.length > 0
+    ? Math.round(rowData.reduce((s, row) => s + row.pct, 0) / rowData.length)
+    : 0
+  ws[XLSX.utils.encode_cell({ r: totalR, c: meetings.length + 1 })] = totalCell('')
+  ws[XLSX.utils.encode_cell({ r: totalR, c: meetings.length + 2 })] = totalCell(`${avgPct}%`)
+
+  ws['!ref']  = XLSX.utils.encode_range({ s: { r: 0, c: 0 }, e: { r: rowData.length + 1, c: N - 1 } })
+  ws['!cols'] = [{ wch: 28 }, ...meetings.map(() => ({ wch: 9 })), { wch: 7 }, { wch: 7 }]
+  ws['!rows'] = [{ hpt: 24 }, ...rowData.map(() => ({ hpt: 18 })), { hpt: 22 }]
+
+  const sheetName = `${groupName} ${monthLabel}`.slice(0, 31)
+  const wb = XLSX.utils.book_new()
+  XLSX.utils.book_append_sheet(wb, ws, sheetName)
+  XLSX.writeFile(wb, `Asistencia_Mensual_${groupName.replace(/\s+/g, '_')}_${monthLabel}.xlsx`)
 }
 
 // ─── Asistentes de una reunión específica ─────────────────────────────────────

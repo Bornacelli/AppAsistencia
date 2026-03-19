@@ -8,7 +8,9 @@
       "Bash(cd \"C:\\\\Users\\\\agm\\\\Documents\\\\Desarrollos\\\\Asistencia CIC\" && firebase deploy --only functions 2>&1)",
       "Bash(cd \"C:\\\\Users\\\\agm\\\\Documents\\\\Desarrollos\\\\Asistencia CIC\" && firebase functions:delete testPush --region us-central1 --force 2>&1)",
       "Bash(cd \"C:\\\\Users\\\\agm\\\\Documents\\\\Desarrollos\\\\Asistencia CIC\" && npm uninstall xlsx && npm install xlsx-js-style)",
-      "Bash(cd \"C:\\\\Users\\\\agm\\\\Documents\\\\Desarrollos\\\\Asistencia CIC\" && rm -rf node_modules/.vite)"
+      "Bash(cd \"C:\\\\Users\\\\agm\\\\Documents\\\\Desarrollos\\\\Asistencia CIC\" && rm -rf node_modules/.vite)",
+      "Bash(find '/c/Users/agm/Documents/per/Desarrollos/Asistencia CIC/src' -type f \\\\\\(-name *.js -o -name *.vue -o -name *.php \\\\\\))",
+      "Bash(npx vite:*)"
     ]
   }
 }

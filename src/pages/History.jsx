@@ -131,8 +131,8 @@ export default function History() {
                   <BarChart data={chartData} barSize={24}>
                     <XAxis dataKey="date" tick={{ fill: '#8896b0', fontSize: 10, fontFamily: 'inherit' }} axisLine={false} tickLine={false} />
                     <YAxis domain={[0, 100]} tick={{ fill: '#8896b0', fontSize: 10 }} axisLine={false} tickLine={false} tickFormatter={v => `${v}%`} />
-                    <Tooltip content={<CustomTooltip />} />
-                    <Bar dataKey="pct" radius={[4, 4, 0, 0]}>
+                    <Tooltip content={<CustomTooltip />} cursor={{ fill: 'rgba(255,255,255,0.04)' }} />
+                    <Bar dataKey="pct" radius={[4, 4, 0, 0]} activeBar={false}>
                       {chartData.map((d, i) => (
                         <Cell key={i} fill={d.pct >= 70 ? '#22c55e' : d.pct >= 40 ? '#f59e0b' : '#ef4444'} fillOpacity={0.85} />
                       ))}

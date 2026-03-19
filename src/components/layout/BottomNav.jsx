@@ -1,4 +1,4 @@
-import { House, ClipboardText, Users, Bell, DotsThreeOutline, ChartBar, Gear, UserCircle, CalendarBlank, Cake, Warning, IdentificationCard } from '@phosphor-icons/react'
+import { House, ClipboardText, Users, Bell, DotsThreeOutline, ChartBar, Gear, UserCircle, CalendarBlank, Cake, Warning, IdentificationCard, SignOut } from '@phosphor-icons/react'
 import { NavLink, useNavigate } from 'react-router-dom'
 import { useState } from 'react'
 import { signOut } from 'firebase/auth'
@@ -6,6 +6,7 @@ import { auth } from '../../firebase'
 import { useAuth } from '../../context/AuthContext'
 import { useToast } from '../../context/ToastContext'
 import { useAlerts } from '../../context/AlertContext'
+
 
 function NavItem({ to, icon: Icon, label, badge }) {
   return (
@@ -44,6 +45,36 @@ function NavItem({ to, icon: Icon, label, badge }) {
   )
 }
 
+
+function SideItem({ to, icon: Icon, label, badge }) {
+  return (
+    <NavLink to={to} className="w-full">
+      {({ isActive }) => (
+        <div
+          className="flex items-center gap-3 px-3 py-2.5 rounded-[10px] transition-colors"
+          style={{
+            background: isActive ? 'rgba(59,130,246,0.12)' : 'transparent',
+            color: isActive ? 'var(--accent)' : 'var(--text-2)',
+          }}
+        >
+          <div className="relative flex-shrink-0">
+            <Icon size={17} weight={isActive ? 'fill' : 'regular'} />
+            {badge > 0 && (
+              <span
+                className="absolute -top-1 -right-1.5 min-w-[14px] h-3.5 px-[3px] rounded-full text-[8px] font-extrabold flex items-center justify-center"
+                style={{ background: 'var(--red)', color: 'white', lineHeight: 1 }}
+              >
+                {badge > 9 ? '9+' : badge}
+              </span>
+            )}
+          </div>
+          <span className="text-sm font-semibold">{label}</span>
+        </div>
+      )}
+    </NavLink>
+  )
+}
+
 export default function BottomNav() {
   const { profile } = useAuth()
   const { ok } = useToast()
@@ -76,9 +107,9 @@ export default function BottomNav() {
 
   return (
     <>
-      {/* Bottom Nav Bar */}
+      {/* ══ MOBILE: barra inferior (oculta en desktop) ══════════════════════════ */}
       <nav
-        className="fixed bottom-0 left-0 right-0 z-50 flex items-stretch"
+        className="md:hidden fixed bottom-0 left-0 right-0 z-50 flex items-stretch"
         style={{
           background: 'var(--surface)',
           borderTop: '1px solid var(--border)',
@@ -89,8 +120,6 @@ export default function BottomNav() {
         <NavItem to="/attendance" icon={ClipboardText}  label="Asistencia" />
         <NavItem to="/members"    icon={Users}          label="Miembros" />
         <NavItem to="/alerts"     icon={Bell}           label="Alertas" badge={alertCount} />
-
-        {/* More button */}
         <button
           onClick={() => setMoreOpen(true)}
           className="flex flex-col items-center gap-1 flex-1 py-2"
@@ -100,10 +129,62 @@ export default function BottomNav() {
         </button>
       </nav>
 
-      {/* More Drawer */}
+      {/* ══ DESKTOP: sidebar izquierda (oculta en mobile) ═══════════════════════ */}
+      <aside
+        className="hidden md:flex flex-col fixed left-0 top-0 bottom-0 z-50 w-[200px] overflow-y-auto"
+        style={{ background: 'var(--surface)', borderRight: '1px solid var(--border)' }}
+      >
+        {/* Nombre de la app */}
+        <div className="px-4 py-5 flex-shrink-0" style={{ borderBottom: '1px solid var(--border)' }}>
+          <p className="font-syne font-extrabold text-[17px]" style={{ color: 'var(--text)' }}>Centro de Inspiración Cristiana</p>
+          <p className="text-[10px] font-semibold uppercase tracking-widest mt-0.5" style={{ color: 'var(--text-3)' }}>Asistencia</p>
+        </div>
+
+        {/* Items de navegación */}
+        <nav className="flex flex-col gap-0.5 px-3 py-4 flex-1">
+          <p className="text-[9px] font-bold uppercase tracking-widest px-3 mb-1.5" style={{ color: 'var(--text-3)' }}>Principal</p>
+          <SideItem to="/"           icon={House}         label="Inicio" />
+          <SideItem to="/attendance" icon={ClipboardText}  label="Asistencia" />
+          <SideItem to="/members"    icon={Users}          label="Miembros" />
+          <SideItem to="/alerts"     icon={Bell}           label="Alertas" badge={alertCount} />
+
+          <div className="my-3" style={{ borderTop: '1px solid var(--border)' }} />
+
+          <p className="text-[9px] font-bold uppercase tracking-widest px-3 mb-1.5" style={{ color: 'var(--text-3)' }}>Más</p>
+          <SideItem to="/meetings"  icon={CalendarBlank}   label="Reuniones" />
+          <SideItem to="/history"   icon={ChartBar}        label="Historial" />
+          <SideItem to="/birthdays" icon={Cake}            label="Cumpleaños" />
+          <SideItem to="/absences"  icon={Warning}         label="Inasistencias" />
+
+          {(isAdmin || isLeader) && (
+            <>
+              <div className="my-3" style={{ borderTop: '1px solid var(--border)' }} />
+              <p className="text-[9px] font-bold uppercase tracking-widest px-3 mb-1.5" style={{ color: 'var(--text-3)' }}>Gestión</p>
+              {(isAdmin || isLeader) && <SideItem to="/reports"  icon={ChartBar}    label="Reportes" />}
+              {isAdmin               && <SideItem to="/leaders"  icon={UserCircle}  label="Líderes" />}
+              {isAdmin               && <SideItem to="/settings" icon={Gear}        label="Configuración" />}
+            </>
+          )}
+        </nav>
+
+        {/* Pie del sidebar */}
+        <div className="px-3 pb-4 flex-shrink-0" style={{ borderTop: '1px solid var(--border)', paddingTop: 12 }}>
+          <SideItem to="/profile" icon={IdentificationCard} label="Mi perfil" />
+          <button
+            onClick={() => setConfirmSignOut(true)}
+            className="w-full flex items-center gap-3 px-3 py-2.5 rounded-[10px] transition-colors mt-0.5"
+            style={{ color: 'var(--red)' }}
+          >
+            <SignOut size={17} />
+            <span className="text-sm font-semibold">Cerrar sesión</span>
+          </button>
+        </div>
+      </aside>
+
+      {/* ══ More Drawer (solo mobile) ════════════════════════════════════════════ */}
       {moreOpen && (
         <div
-          className={`fixed inset-0 z-[90] ${closing ? 'animate-fade-out' : 'animate-fade-in'}`}
+          className={`md:hidden fixed inset-0 z-[90] ${closing ? 'animate-fade-out' : 'animate-fade-in'}`}
           style={{ background: 'rgba(0,0,0,0.6)', backdropFilter: 'blur(4px)' }}
           onClick={closeDrawer}
         >
@@ -112,7 +193,6 @@ export default function BottomNav() {
             style={{ background: 'var(--surface)', border: '1px solid var(--border)', paddingBottom: 'calc(env(safe-area-inset-bottom) + 20px)' }}
             onClick={e => e.stopPropagation()}
           >
-            {/* Handle — toca para cerrar */}
             <button
               onClick={closeDrawer}
               className="flex items-center justify-center w-full -mt-1 mb-4 py-2"
@@ -149,7 +229,7 @@ export default function BottomNav() {
         </div>
       )}
 
-      {/* Sign-out confirm modal */}
+      {/* ══ Confirmar cierre de sesión ════════════════════════════════════════════ */}
       {confirmSignOut && (
         <div
           className="fixed inset-0 z-[100] flex items-center justify-center px-6 animate-fade-in"

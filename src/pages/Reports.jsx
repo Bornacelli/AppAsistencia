@@ -9,7 +9,7 @@ import {
   DownloadSimple, ChartBar, Users, Trophy, Star, ListBullets, HandHeart, CaretDown, CaretUp, ArrowClockwise
 } from '@phosphor-icons/react'
 import {
-  exportRankingReport, exportMembersList, exportMeetingAttendeesList, exportInvitationRanking, exportAgeRangeList
+  exportRankingReport, exportMembersList, exportMeetingAttendeesList, exportInvitationRanking, exportAgeRangeList, exportMonthlyAttendance
 } from '../utils/excel'
 import { getAgeRange } from '../utils/members'
 import { localDateStr, todayStr, formatDateShort } from '../utils/dates'
@@ -38,7 +38,18 @@ export default function Reports() {
   const [listMeeting,    setListMeeting]    = useState('')
   const [ageRangeGroup,  setAgeRangeGroup]  = usePersistedState('rep_age_group', '')
 
+  // Mensual tab state
+  const [mensualGroup, setMensualGroup] = usePersistedState('rep_mensual_group', '')
+  const [mensualMonth, setMensualMonth] = usePersistedState('rep_mensual_month', todayStr().slice(0, 7))
+
   useEffect(() => { loadData() }, [])
+
+  // Auto-seleccionar grupo para líderes en tab mensual
+  useEffect(() => {
+    if (isLeader && !mensualGroup && groups.length > 0) {
+      setMensualGroup(groups[0].id)
+    }
+  }, [groups, isLeader, mensualGroup])
 
   async function loadData() {
     setLoading(true)
@@ -189,6 +200,22 @@ export default function Reports() {
       : members.filter(m => m.active !== false)
   }, [selectedMeetingRecord, members])
 
+  const mensualMeetings = useMemo(() => {
+    if (!mensualGroup || !mensualMonth) return []
+    const leaderGroupIds = isLeader ? (profile?.groupIds || []) : null
+    if (leaderGroupIds && !leaderGroupIds.includes(mensualGroup)) return []
+    return records
+      .filter(r => r.groupId === mensualGroup && (r.date || '').startsWith(mensualMonth))
+      .sort((a, b) => (a.date || '').localeCompare(b.date || ''))
+  }, [records, mensualGroup, mensualMonth, isLeader, profile])
+
+  const mensualMembers = useMemo(() => {
+    if (!mensualGroup) return []
+    return members
+      .filter(m => m.active !== false && memberInGroup(m, mensualGroup))
+      .sort((a, b) => (a.fullName || '').localeCompare(b.fullName || '', 'es'))
+  }, [members, mensualGroup])
+
   const groupName = groups.find(g => g.id === selGroup)?.name || 'Todos'
   const tabs = [
     { id: 'summary',      label: 'Resumen' },
@@ -196,6 +223,7 @@ export default function Reports() {
     { id: 'nuevos',       label: 'Nuevos' },
     { id: 'invitadores',  label: 'Invitadores' },
     { id: 'listas',       label: 'Listas' },
+    { id: 'mensual',      label: 'Mensual' },
   ]
 
   function toggleInviter(id) {
@@ -225,8 +253,8 @@ export default function Reports() {
         </button>
       </div>
 
-      {/* Filters (for non-listas tabs) */}
-      {activeTab !== 'listas' && (
+      {/* Filters (for non-listas, non-mensual tabs) */}
+      {activeTab !== 'listas' && activeTab !== 'mensual' && (
         <div className="px-4 py-3 flex flex-col gap-2" style={{ borderBottom: '1px solid var(--border)' }}>
           <select value={selGroup} onChange={e => !isLeader && setSelGroup(e.target.value)}
             disabled={isLeader}
@@ -354,15 +382,7 @@ export default function Reports() {
                   <EmptyState icon={Star} title="Sin nuevos" description="No hay personas nuevas con asistencia en este período." />
                 ) : (
                   <>
-                    <button
-                      onClick={() => {
-                        const grpMap = Object.fromEntries(groups.map(g => [g.id, g.name]))
-                        exportMembersList(newAttendees.map(m => ({ ...m, _groupName: grpMap[m.groupId] || '' })), `Nuevos_${groupName}`)
-                      }}
-                      className="h-12 rounded-[12px] font-bold text-sm flex items-center justify-center gap-2 press"
-                      style={{ background: 'rgba(245,158,11,0.12)', color: 'var(--amber)', border: '1px solid rgba(245,158,11,0.25)' }}>
-                      <DownloadSimple size={18} /> Exportar lista de nuevos
-                    </button>
+                    
                     <div className="grid grid-cols-2 gap-3">
                       <div className="flex flex-col items-center gap-1 p-3 rounded-[12px]"
                         style={{ background: 'var(--surface)', border: '1px solid var(--border)' }}>
@@ -375,6 +395,19 @@ export default function Reports() {
                         <span className="text-[10px] font-bold uppercase tracking-wide text-center" style={{ color: 'var(--text-2)' }}>Reuniones</span>
                       </div>
                     </div>
+
+                    <button
+                      onClick={() => {
+                        const grpMap = Object.fromEntries(groups.map(g => [g.id, g.name]))
+                        exportMembersList(newAttendees.map(m => ({
+                          ...m,
+                          _groupName: selGroup ? groupName : (grpMap[m.groupId] || '')
+                        })), `Nuevos_${groupName}`)
+                      }}
+                      className="h-12 rounded-[12px] font-bold text-sm flex items-center justify-center gap-2 press"
+                      style={{ background: 'rgba(245,158,11,0.12)', color: 'var(--amber)', border: '1px solid rgba(245,158,11,0.25)' }}>
+                      <DownloadSimple size={18} /> Exportar lista de nuevos
+                    </button>
                     {newByMeeting.length > 0 && (
                       <>
                         <p className="text-[11px] font-bold uppercase tracking-widest" style={{ color: 'var(--text-2)' }}>
@@ -417,6 +450,7 @@ export default function Reports() {
                             </div>
                           )
                         })}
+                        
                         <div style={{ height: 1, background: 'var(--border)', marginTop: 4, marginBottom: 4 }} />
                         <p className="text-[11px] font-bold uppercase tracking-widest" style={{ color: 'var(--text-2)' }}>
                           Lista de nuevos
@@ -485,6 +519,13 @@ export default function Reports() {
                       </div>
                     </div>
 
+                    <button
+                      onClick={() => exportInvitationRanking(invitationRanking, groupName)}
+                      className="h-12 rounded-[12px] font-bold text-sm flex items-center justify-center gap-2 press"
+                      style={{ background: 'rgba(59,130,246,0.12)', color: 'var(--accent)', border: '1px solid rgba(59,130,246,0.25)' }}>
+                      <DownloadSimple size={18} /> Exportar ranking de invitaciones
+                    </button>
+
                     {/* Lista */}
                     {invitationRanking.map((r, i) => {
                       const medal    = i === 0 ? '🥇' : i === 1 ? '🥈' : i === 2 ? '🥉' : `${i + 1}.`
@@ -537,12 +578,7 @@ export default function Reports() {
                       )
                     })}
 
-                    <button
-                      onClick={() => exportInvitationRanking(invitationRanking, groupName)}
-                      className="h-12 rounded-[12px] font-bold text-sm flex items-center justify-center gap-2 press"
-                      style={{ background: 'rgba(59,130,246,0.12)', color: 'var(--accent)', border: '1px solid rgba(59,130,246,0.25)' }}>
-                      <DownloadSimple size={18} /> Exportar ranking de invitaciones
-                    </button>
+                    
                   </>
                 )}
               </div>
@@ -570,7 +606,11 @@ export default function Reports() {
                         ...m,
                         _groupName: groups.find(g => g.id === m.groupId)?.name || ''
                       })),
-                      'Todos', ageRanges
+                      'Todos', ageRanges,
+                      members.filter(m => m.active === false).map(m => ({
+                        ...m,
+                        _groupName: groups.find(g => g.id === m.groupId)?.name || ''
+                      }))
                     )}
                     className="h-11 rounded-[10px] font-bold text-sm flex items-center justify-center gap-2 press"
                     style={{ background: 'rgba(59,130,246,0.12)', color: 'var(--accent)', border: '1px solid rgba(59,130,246,0.25)' }}>
@@ -603,7 +643,10 @@ export default function Reports() {
                     disabled={!listGroup}
                     onClick={() => {
                       const grp = groups.find(g => g.id === listGroup)
-                      exportMembersList(listGroupMembers, grp?.name || listGroup, ageRanges)
+                      const inactive = members
+                        .filter(m => m.active === false && memberInGroup(m, listGroup))
+                        .map(m => ({ ...m, _groupName: grp?.name || '' }))
+                      exportMembersList(listGroupMembers, grp?.name || listGroup, ageRanges, inactive)
                     }}
                     className="h-11 rounded-[10px] font-bold text-sm flex items-center justify-center gap-2 press"
                     style={{
@@ -682,7 +725,7 @@ export default function Reports() {
                     <p className="text-sm font-bold" style={{ color: 'var(--text)' }}>Asistentes por reunión</p>
                   </div>
                   <p className="text-xs" style={{ color: 'var(--text-2)' }}>
-                    Selecciona una reunión para exportar quién asistió, llegó tarde o estuvo ausente.
+                    Selecciona una reunión para exportar quién asistió o estuvo ausente.
                   </p>
                   <select value={listMeeting} onChange={e => setListMeeting(e.target.value)}
                     className="w-full rounded-[10px] px-3 py-2.5 text-sm font-medium outline-none"
@@ -727,6 +770,130 @@ export default function Reports() {
                 </div>
               </div>
             )}
+            {/* Mensual tab */}
+            {activeTab === 'mensual' && (
+              <div className="flex flex-col gap-4">
+                <p className="text-xs" style={{ color: 'var(--text-2)' }}>
+                  Lista completa del grupo con todas las reuniones del mes. Muestra quién asistió y quién no en cada reunión.
+                </p>
+
+                {/* Filtros propios */}
+                <select
+                  value={mensualGroup}
+                  onChange={e => !isLeader && setMensualGroup(e.target.value)}
+                  disabled={isLeader && (profile?.groupIds || []).length === 1}
+                  className="w-full rounded-[10px] px-3 py-2.5 text-sm font-medium outline-none"
+                  style={{ background: 'var(--surface)', border: '1px solid var(--border)', color: 'var(--text)', fontFamily: 'inherit' }}>
+                  {!isLeader && <option value="">Selecciona un grupo</option>}
+                  {groups.map(g => <option key={g.id} value={g.id}>{g.name}</option>)}
+                </select>
+
+                <input
+                  type="month"
+                  value={mensualMonth}
+                  onChange={e => setMensualMonth(e.target.value)}
+                  className="w-full rounded-[10px] px-3 py-2.5 text-sm font-medium outline-none"
+                  style={{ background: 'var(--surface)', border: '1px solid var(--border)', color: 'var(--text)', fontFamily: 'inherit', colorScheme: 'dark' }}
+                />
+
+                {!mensualGroup ? (
+                  <EmptyState icon={ChartBar} title="Selecciona un grupo" description="Elige el grupo para ver el reporte mensual." />
+                ) : mensualMeetings.length === 0 ? (
+                  <EmptyState icon={ChartBar} title="Sin reuniones" description="No hay reuniones registradas para este grupo en el mes seleccionado." />
+                ) : (
+                  <>
+                    {/* Stats rápidos */}
+                    <div className="grid grid-cols-2 gap-3">
+                      <div className="flex flex-col items-center gap-1 p-3 rounded-[12px]"
+                        style={{ background: 'var(--surface)', border: '1px solid var(--border)' }}>
+                        <span className="font-syne font-extrabold text-2xl" style={{ color: 'var(--accent)' }}>{mensualMembers.length}</span>
+                        <span className="text-[10px] font-bold uppercase tracking-wide text-center" style={{ color: 'var(--text-2)' }}>Miembros</span>
+                      </div>
+                      <div className="flex flex-col items-center gap-1 p-3 rounded-[12px]"
+                        style={{ background: 'var(--surface)', border: '1px solid var(--border)' }}>
+                        <span className="font-syne font-extrabold text-2xl" style={{ color: 'var(--green)' }}>{mensualMeetings.length}</span>
+                        <span className="text-[10px] font-bold uppercase tracking-wide text-center" style={{ color: 'var(--text-2)' }}>Reuniones</span>
+                      </div>
+                    </div>
+
+                    {/* Botón exportar */}
+                    <button
+                      onClick={() => {
+                        const grpName = groups.find(g => g.id === mensualGroup)?.name || mensualGroup
+                        exportMonthlyAttendance(mensualMembers, mensualMeetings, grpName, mensualMonth)
+                      }}
+                      className="h-12 rounded-[12px] font-bold text-sm flex items-center justify-center gap-2 press"
+                      style={{ background: 'rgba(59,130,246,0.12)', color: 'var(--accent)', border: '1px solid rgba(59,130,246,0.25)' }}>
+                      <DownloadSimple size={18} /> Exportar reporte mensual
+                    </button>
+
+                    {/* Tabla scrollable */}
+                    <div style={{ overflowX: 'auto', borderRadius: 12, border: '1px solid var(--border)' }}>
+                      <table style={{ borderCollapse: 'collapse', minWidth: '100%' }}>
+                        <thead>
+                          <tr>
+                            <th
+                              style={{
+                                position: 'sticky', left: 0, zIndex: 2,
+                                background: 'var(--surface)', color: 'var(--text)',
+                                padding: '10px 12px', textAlign: 'left',
+                                fontSize: 11, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.05em',
+                                borderBottom: '1px solid var(--border)', borderRight: '1px solid var(--border)',
+                                whiteSpace: 'nowrap', minWidth: 140,
+                              }}>
+                              Nombre
+                            </th>
+                            {mensualMeetings.map(r => (
+                              <th key={r.id} style={{
+                                background: 'var(--surface)', color: 'var(--text-2)',
+                                padding: '10px 8px', textAlign: 'center',
+                                fontSize: 10, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.04em',
+                                borderBottom: '1px solid var(--border)', borderLeft: '1px solid var(--border)',
+                                whiteSpace: 'nowrap', minWidth: 62,
+                              }}>
+                                {formatDateShort(r.date)}
+                              </th>
+                            ))}
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {mensualMembers.map((m, mi) => (
+                            <tr key={m.id} style={{ background: mi % 2 === 0 ? 'var(--surface)' : 'var(--card)' }}>
+                              <td style={{
+                                position: 'sticky', left: 0, zIndex: 1,
+                                background: mi % 2 === 0 ? 'var(--surface)' : 'var(--card)',
+                                padding: '8px 12px', fontSize: 13, fontWeight: 600, color: 'var(--text)',
+                                borderTop: '1px solid var(--border)', borderRight: '1px solid var(--border)',
+                                whiteSpace: 'nowrap', maxWidth: 180, overflow: 'hidden', textOverflow: 'ellipsis',
+                              }}>
+                                {m.fullName}
+                              </td>
+                              {mensualMeetings.map(r => {
+                                const st = r.records?.[m.id]
+                                const attended = st === 'present' || st === 'late'
+                                return (
+                                  <td key={r.id} style={{
+                                    padding: '8px 8px', textAlign: 'center', fontSize: 12, fontWeight: 700,
+                                    borderTop: '1px solid var(--border)', borderLeft: '1px solid var(--border)',
+                                    color: attended ? 'var(--green)' : 'var(--red)',
+                                    background: attended
+                                      ? 'rgba(34,197,94,0.08)'
+                                      : 'rgba(239,68,68,0.06)',
+                                  }}>
+                                    {attended ? 'Sí' : 'No'}
+                                  </td>
+                                )
+                              })}
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  </>
+                )}
+              </div>
+            )}
+
           </>
         )}
       </div>

@@ -57,7 +57,7 @@ export default function MemberProfile() {
         const groupJoinDate = data.groupId && m.groupJoinDates?.[data.groupId]
           ? m.groupJoinDates[data.groupId]
           : m.joinDate
-        if (status !== undefined && (!groupJoinDate || data.date >= groupJoinDate)) {
+        if (status != null && (!groupJoinDate || data.date >= groupJoinDate)) {
           hist.push({ date: data.date, status, groupId: data.groupId })
         }
       })

@@ -104,12 +104,14 @@ export default function Attendance() {
       let meetingExists = false
       const attSnap = await getDoc(doc(db, 'attendance', docId))
       if (attSnap.exists()) {
-        initAtt = { ...(attSnap.data().records || {}) }
+        const raw = attSnap.data().records || {}
+        initAtt = Object.fromEntries(Object.entries(raw).filter(([, v]) => v != null))
         meetingExists = true
       } else if (selGroup !== '__default__') {
         const legacySnap = await getDoc(doc(db, 'attendance', selDate))
         if (legacySnap.exists()) {
-          initAtt = { ...(legacySnap.data().records || {}) }
+          const raw = legacySnap.data().records || {}
+          initAtt = Object.fromEntries(Object.entries(raw).filter(([, v]) => v != null))
           meetingExists = true
         }
       }
@@ -175,13 +177,15 @@ export default function Attendance() {
   async function doAutoSave(att) {
     try {
       const docId = selGroup === '__default__' ? selDate : `${selGroup}_${selDate}`
-      const present = Object.values(att).filter(x => x === 'present').length
-      const absent  = Object.values(att).filter(x => x === 'absent').length
+      // Strip null/undefined entries so they don't pollute Firestore
+      const cleanAtt = Object.fromEntries(Object.entries(att).filter(([, v]) => v != null))
+      const present = Object.values(cleanAtt).filter(x => x === 'present').length
+      const absent  = Object.values(cleanAtt).filter(x => x === 'absent').length
       await setDoc(doc(db, 'attendance', docId), {
         groupId:      selGroup === '__default__' ? null : selGroup,
         date:         selDate,
         leaderId:     profile.uid,
-        records:      att,
+        records:      cleanAtt,
         totalPresent: present,
         totalAbsent:  absent,
         savedAt:      new Date().toISOString(),
@@ -199,7 +203,7 @@ export default function Attendance() {
   function mark(memberId, status) {
     setAttendance(prev => {
       const next = { ...prev }
-      if (next[memberId] === status) next[memberId] = null
+      if (next[memberId] === status) delete next[memberId]
       else next[memberId] = status
       scheduleAutoSave(next)
       return next

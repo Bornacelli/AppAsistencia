@@ -19,7 +19,7 @@ import { usePersistedState } from '../hooks/usePersistedState'
 export default function Reports() {
   const { profile } = useAuth()
   const navigate = useNavigate()
-  const isLeader = profile?.role === 'leader'
+  const isLeader = profile?.role === 'leader' || profile?.role === 'assistant'
 
   const [records,   setRecords]   = useState([])
   const [members,   setMembers]   = useState([])
@@ -67,10 +67,14 @@ export default function Reports() {
       setMembers(mSnap.docs.map(d => ({ id: d.id, ...d.data() })))
       const allGroups = gSnap.docs.map(d => ({ id: d.id, ...d.data() }))
       // Leaders only see their assigned groups
-      const visibleGroups = profile?.role === 'leader'
+      const visibleGroups = (profile?.role === 'leader' || profile?.role === 'assistant')
         ? allGroups.filter(g => (profile.groupIds || []).includes(g.id))
         : allGroups
       setGroups(visibleGroups)
+      // Reset stale persisted group filters that no longer belong to visible groups
+      if (mensualGroup  && !visibleGroups.some(g => g.id === mensualGroup))  setMensualGroup('')
+      if (listGroup     && !visibleGroups.some(g => g.id === listGroup))     setListGroup('')
+      if (ageRangeGroup && !visibleGroups.some(g => g.id === ageRangeGroup)) setAgeRangeGroup('')
     } catch (e) { console.error(e) }
     finally { setLoading(false) }
   }
@@ -98,8 +102,12 @@ export default function Reports() {
     return filteredMembers.map(m => {
       let present = 0, total = 0
       filteredRecords.forEach(r => {
-        if (m.joinDate && r.date < m.joinDate) return  // no contar reuniones antes del ingreso
-        total++  // toda reunión del grupo después del ingreso cuenta
+        // Use group-specific join date if available, else fallback to general joinDate
+        const effectiveJoinDate = r.groupId && m.groupJoinDates?.[r.groupId]
+          ? m.groupJoinDates[r.groupId]
+          : m.joinDate
+        if (effectiveJoinDate && r.date < effectiveJoinDate) return
+        total++
         const st = r.records?.[m.id]
         if (st === 'present' || st === 'late') present++
       })
@@ -125,19 +133,38 @@ export default function Reports() {
       })
     })
     const grpMap = Object.fromEntries(groups.map(g => [g.id, g.name]))
+    const leaderGroupIds = isLeader ? (profile?.groupIds || []) : null
     return filteredMembers
       .filter(m => m.spiritualStatus === 'new' && attendedIds.has(m.id))
-      .map(m => ({ ...m, _groupName: grpMap[m.groupId] || '', _attendCount: filteredRecords.filter(r => r.records?.[m.id] === 'present').length }))
+      .map(m => {
+        const memberGroupIds = m.groupIds?.length > 0 ? m.groupIds : (m.groupId ? [m.groupId] : [])
+        // Determine the most relevant group for this member in the current context
+        const contextGroupId = selGroup ||
+          (leaderGroupIds ? leaderGroupIds.find(gid => memberGroupIds.includes(gid)) : null)
+        return {
+          ...m,
+          _groupName: grpMap[m.groupId] || '',
+          _effectiveJoinDate: (contextGroupId && m.groupJoinDates?.[contextGroupId]) || m.joinDate || '',
+          _attendCount: filteredRecords.filter(r => r.records?.[m.id] === 'present').length,
+        }
+      })
       .sort((a, b) => b._attendCount - a._attendCount)
-  }, [filteredRecords, filteredMembers, groups])
+  }, [filteredRecords, filteredMembers, groups, selGroup, isLeader, profile])
 
-  // New members per meeting date: only those whose joinDate matches the meeting date and are still 'new'
+  // New members per meeting date: those whose join date for that group matches the meeting date
   const newByMeeting = useMemo(() => {
     return filteredRecords
       .map(r => ({
         id: r.id,
         date: r.date,
-        members: filteredMembers.filter(m => m.spiritualStatus === 'new' && m.joinDate === r.date),
+        members: filteredMembers.filter(m => {
+          if (m.spiritualStatus !== 'new') return false
+          // Use group-specific join date if available, else fallback to general joinDate
+          const effectiveJoinDate = r.groupId && m.groupJoinDates?.[r.groupId]
+            ? m.groupJoinDates[r.groupId]
+            : m.joinDate
+          return effectiveJoinDate === r.date
+        }),
       }))
       .filter(r => r.members.length > 0)
   }, [filteredRecords, filteredMembers])
@@ -174,7 +201,11 @@ export default function Reports() {
         ? members.filter(m => memberInAnyGroup(m, leaderGroupIds) && m.active !== false)
         : members.filter(m => m.active !== false)
     const grpMap = Object.fromEntries(groups.map(g => [g.id, g.name]))
-    return mems.map(m => ({ ...m, _groupName: grpMap[m.groupId] || '' }))
+    return mems.map(m => ({
+      ...m,
+      _groupName: grpMap[m.groupId] || '',
+      _effectiveJoinDate: (listGroup && m.groupJoinDates?.[listGroup]) || m.joinDate || '',
+    }))
   }, [members, groups, listGroup, isLeader, profile])
 
   const ageRangeMembers = useMemo(() => {
@@ -381,8 +412,7 @@ export default function Reports() {
                 {newAttendees.length === 0 ? (
                   <EmptyState icon={Star} title="Sin nuevos" description="No hay personas nuevas con asistencia en este período." />
                 ) : (
-                  <>
-                    
+                  <> 
                     <div className="grid grid-cols-2 gap-3">
                       <div className="flex flex-col items-center gap-1 p-3 rounded-[12px]"
                         style={{ background: 'var(--surface)', border: '1px solid var(--border)' }}>
@@ -397,13 +427,7 @@ export default function Reports() {
                     </div>
 
                     <button
-                      onClick={() => {
-                        const grpMap = Object.fromEntries(groups.map(g => [g.id, g.name]))
-                        exportMembersList(newAttendees.map(m => ({
-                          ...m,
-                          _groupName: selGroup ? groupName : (grpMap[m.groupId] || '')
-                        })), `Nuevos_${groupName}`)
-                      }}
+                      onClick={() => exportMembersList(newAttendees, `Nuevos_${groupName}`, ageRanges)}
                       className="h-12 rounded-[12px] font-bold text-sm flex items-center justify-center gap-2 press"
                       style={{ background: 'rgba(245,158,11,0.12)', color: 'var(--amber)', border: '1px solid rgba(245,158,11,0.25)' }}>
                       <DownloadSimple size={18} /> Exportar lista de nuevos
@@ -645,7 +669,11 @@ export default function Reports() {
                       const grp = groups.find(g => g.id === listGroup)
                       const inactive = members
                         .filter(m => m.active === false && memberInGroup(m, listGroup))
-                        .map(m => ({ ...m, _groupName: grp?.name || '' }))
+                        .map(m => ({
+                          ...m,
+                          _groupName: grp?.name || '',
+                          _effectiveJoinDate: (m.groupJoinDates?.[listGroup]) || m.joinDate || '',
+                        }))
                       exportMembersList(listGroupMembers, grp?.name || listGroup, ageRanges, inactive)
                     }}
                     className="h-11 rounded-[10px] font-bold text-sm flex items-center justify-center gap-2 press"
@@ -780,7 +808,7 @@ export default function Reports() {
                 {/* Filtros propios */}
                 <select
                   value={mensualGroup}
-                  onChange={e => !isLeader && setMensualGroup(e.target.value)}
+                  onChange={e => setMensualGroup(e.target.value)}
                   disabled={isLeader && (profile?.groupIds || []).length === 1}
                   className="w-full rounded-[10px] px-3 py-2.5 text-sm font-medium outline-none"
                   style={{ background: 'var(--surface)', border: '1px solid var(--border)', color: 'var(--text)', fontFamily: 'inherit' }}>

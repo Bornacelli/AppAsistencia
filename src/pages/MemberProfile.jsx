@@ -44,13 +44,20 @@ export default function MemberProfile() {
       setAgeRanges(cfgSnap.exists() ? (cfgSnap.data().ageRanges || []) : [])
 
       // Attendance history for this member
+      // Non-admins only see records from their assigned groups
+      const viewerGroupIds = isAdmin ? null : (profile?.groupIds || [])
       const attSnap = await getDocs(collection(db, 'attendance'))
       const hist = []
       attSnap.docs.forEach(d => {
         const data = d.data()
         const status = data.records?.[id]
-        // Exclude records from before this member's joinDate
-        if (status !== undefined && (!m.joinDate || data.date >= m.joinDate)) {
+        // Restrict to viewer's groups if not admin
+        if (viewerGroupIds !== null && !viewerGroupIds.includes(data.groupId)) return
+        // Exclude records from before this member's join date for this specific group
+        const groupJoinDate = data.groupId && m.groupJoinDates?.[data.groupId]
+          ? m.groupJoinDates[data.groupId]
+          : m.joinDate
+        if (status !== undefined && (!groupJoinDate || data.date >= groupJoinDate)) {
           hist.push({ date: data.date, status, groupId: data.groupId })
         }
       })
@@ -74,6 +81,27 @@ export default function MemberProfile() {
   const pctColor = pct >= 70 ? 'var(--green)' : pct >= 40 ? 'var(--amber)' : 'var(--red)'
   const statusIcon = { present: CheckCircle, absent: XCircle, late: CheckCircle }
   const statusColor = { present: 'var(--green)', absent: 'var(--red)', late: 'var(--green)' }
+
+  // Compute join date entries based on viewer's access
+  // Non-admin: show only the join date for the viewer's group(s)
+  // Admin: show per-group dates if member belongs to multiple groups
+  const viewerGroupIds = isAdmin ? null : (profile?.groupIds || [])
+  const relevantGroups = viewerGroupIds
+    ? groups.filter(g => viewerGroupIds.includes(g.id))
+    : groups
+  const joinDateItems = (() => {
+    if (relevantGroups.length === 0) {
+      return member.joinDate ? [{ label: 'Fecha de ingreso', date: member.joinDate }] : []
+    }
+    if (relevantGroups.length === 1) {
+      const date = member.groupJoinDates?.[relevantGroups[0].id] || member.joinDate
+      return date ? [{ label: 'Fecha de ingreso', date }] : []
+    }
+    // Multiple groups: show one entry per group
+    return relevantGroups
+      .map(g => ({ label: `Ingreso — ${g.name}`, date: member.groupJoinDates?.[g.id] || member.joinDate }))
+      .filter(e => e.date)
+  })()
 
   return (
     <div className="flex flex-col" style={{ background: 'var(--bg)', minHeight: '100%' }}>
@@ -142,7 +170,7 @@ export default function MemberProfile() {
             member.phone      && { icon: Phone,     label: 'WhatsApp',         value: member.phone,                  href: `https://wa.me/${member.phone.replace(/\D/g,'')}` },
             member.address    && { icon: MapPin,    label: 'Dirección',        value: member.address },
             member.birthDate  && { icon: Calendar,  label: 'Cumpleaños',       value: `${formatDate(member.birthDate, { day: 'numeric', month: 'long' })} (${ageFrom(member.birthDate)} años)` },
-            member.joinDate   && { icon: Calendar,  label: 'Fecha de ingreso', value: formatDate(member.joinDate, { day: 'numeric', month: 'long', year: 'numeric' }) },
+            ...joinDateItems.map(item => ({ icon: Calendar, label: item.label, value: formatDate(item.date, { day: 'numeric', month: 'long', year: 'numeric' }) })),
             member.referredBy && { icon: Handshake, label: 'Invitado por',     value: member.referredBy },
           ].filter(Boolean).map((item, i, arr) => (
             <div key={item.label} className="flex items-center gap-3 px-4 py-3"

@@ -176,7 +176,7 @@ export function exportMembersList(members, groupName = 'Todos', ageRanges = [], 
         m.phone      || '',
         m.address    || '',
         m.birthDate  || '',
-        m.joinDate   || '',
+        m._effectiveJoinDate || m.joinDate || '',
         statusLabel[m.spiritualStatus] || m.spiritualStatus || '',
         m._groupName || '',
         m.referredBy || '',
@@ -420,7 +420,12 @@ export function exportMeetingAttendeesList(record, groupMembers, allMembers, gro
   const recs        = record.records || {}
   const statusLabel = { new: 'Nuevo', following: 'En seguimiento', consolidated: 'Consolidado', member: 'Miembro', leader: 'Líder' }
 
-  const eligible       = groupMembers.filter(m => !m.joinDate || m.joinDate <= record.date)
+  const eligible       = groupMembers.filter(m => {
+    const effectiveJoinDate = record.groupId && m.groupJoinDates?.[record.groupId]
+      ? m.groupJoinDates[record.groupId]
+      : m.joinDate
+    return !effectiveJoinDate || effectiveJoinDate <= record.date
+  })
   const eligibleIds    = new Set(eligible.map(m => m.id))
   const groupMemberIds = new Set(groupMembers.map(m => m.id))
 

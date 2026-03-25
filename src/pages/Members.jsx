@@ -1,4 +1,5 @@
 import { useState, useEffect, useMemo, useRef } from 'react'
+import { usePersistedState } from '../hooks/usePersistedState'
 import { collection, getDocs, doc, addDoc, updateDoc, getDoc } from 'firebase/firestore'
 import { db } from '../firebase'
 import { useAuth } from '../context/AuthContext'
@@ -80,14 +81,14 @@ export default function Members() {
   const [people,       setPeople]       = useState([])
   const [groups,       setGroups]       = useState([])
   const [loading,      setLoading]      = useState(true)
-  const [search,       setSearch]       = useState('')
-  const [filterGroup,    setFilterGroup]    = useState('')
-  const [filterStatus,   setFilterStatus]   = useState('')
-  const [filterActive,   setFilterActive]   = useState('true')
-  const [filterAgeRange, setFilterAgeRange] = useState('')
-  const [filterSex,      setFilterSex]      = useState('')
+  const [search,         setSearch]         = usePersistedState('mem_search', '')
+  const [filterGroup,    setFilterGroup]    = usePersistedState('mem_filter_group', '')
+  const [filterStatus,   setFilterStatus]   = usePersistedState('mem_filter_status', '')
+  const [filterActive,   setFilterActive]   = usePersistedState('mem_filter_active', 'true')
+  const [filterAgeRange, setFilterAgeRange] = usePersistedState('mem_filter_age', '')
+  const [filterSex,      setFilterSex]      = usePersistedState('mem_filter_sex', '')
   const [ageRanges,      setAgeRanges]      = useState([])
-  const [showFilters,  setShowFilters]  = useState(false)
+  const [showFilters,    setShowFilters]    = usePersistedState('mem_show_filters', false)
 
   // Import
   const fileInputRef = useRef(null)
@@ -131,7 +132,13 @@ export default function Members() {
       ].sort((a, b) => (a.fullName || '').localeCompare(b.fullName || '', 'es'))
 
       setPeople(normalized)
-      setGroups(gSnap.docs.map(d => ({ id: d.id, ...d.data() })))
+      const allGroups = gSnap.docs.map(d => ({ id: d.id, ...d.data() }))
+      const visibleGroups = isAdmin ? allGroups : allGroups.filter(g => (profile?.groupIds || []).includes(g.id))
+      setGroups(visibleGroups)
+      // Reset group filter if stored value no longer belongs to visible groups
+      if (filterGroup && !visibleGroups.some(g => g.id === filterGroup)) {
+        setFilterGroup('')
+      }
     } catch (e) { console.error(e) }
     finally { setLoading(false) }
   }
@@ -338,6 +345,14 @@ export default function Members() {
               {ageRanges.map(r => <option key={r.name} value={r.name}>{r.name}</option>)}
             </select>
           </div>
+          {(search || filterGroup || filterStatus || filterActive !== 'true' || filterSex || filterAgeRange) && (
+            <button
+              onClick={() => { setSearch(''); setFilterGroup(''); setFilterStatus(''); setFilterActive('true'); setFilterSex(''); setFilterAgeRange('') }}
+              className="w-full py-2 rounded-[9px] text-xs font-bold press"
+              style={{ background: 'rgba(239,68,68,0.08)', color: 'var(--red)', border: '1px solid rgba(239,68,68,0.2)' }}>
+              Limpiar filtros
+            </button>
+          )}
         </div>
       )}
 

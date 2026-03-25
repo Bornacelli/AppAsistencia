@@ -80,9 +80,14 @@ export default function Attendance() {
 
       let groupMems = allActive.filter(belongsToGroup)
 
-      // For past dates, only show members who had already joined by that date
+      // For past dates, only show members who had already joined this group by that date
       if (selDate < todayStr()) {
-        groupMems = groupMems.filter(m => !m.joinDate || m.joinDate <= selDate)
+        groupMems = groupMems.filter(m => {
+          const effectiveJoinDate = selGroup !== '__default__' && m.groupJoinDates?.[selGroup]
+            ? m.groupJoinDates[selGroup]
+            : m.joinDate
+          return !effectiveJoinDate || effectiveJoinDate <= selDate
+        })
       }
       setMembers(groupMems)
       membersRef.current = groupMems
@@ -116,16 +121,24 @@ export default function Attendance() {
       if (isPast && meetingExists) {
         let autoAbsentAdded = false
         groupMems.forEach(m => {
-          if (!(m.id in initAtt) && (!m.joinDate || m.joinDate <= selDate)) {
+          const effectiveJoinDate = selGroup !== '__default__' && m.groupJoinDates?.[selGroup]
+            ? m.groupJoinDates[selGroup]
+            : m.joinDate
+          if (!(m.id in initAtt) && (!effectiveJoinDate || effectiveJoinDate <= selDate)) {
             initAtt[m.id] = 'absent'
             autoAbsentAdded = true
           }
         })
-        // Remove any records for members who hadn't joined yet (leftover from old data)
+        // Remove any records for members who hadn't joined this group yet (leftover from old data)
         Object.keys(initAtt).forEach(memberId => {
           const member = all.find(m => m.id === memberId)
-          if (member && member.joinDate && member.joinDate > selDate) {
-            delete initAtt[memberId]
+          if (member) {
+            const effectiveJoinDate = selGroup !== '__default__' && member.groupJoinDates?.[selGroup]
+              ? member.groupJoinDates[selGroup]
+              : member.joinDate
+            if (effectiveJoinDate && effectiveJoinDate > selDate) {
+              delete initAtt[memberId]
+            }
           }
         })
         // Persist auto-absent entries to Firestore so they don't reset on reload
@@ -246,8 +259,10 @@ export default function Attendance() {
       const currentGroupIds = member.groupIds?.length > 0 ? member.groupIds : (member.groupId ? [member.groupId] : [])
       if (currentGroupIds.includes(selGroup)) return
       const newGroupIds = [...currentGroupIds, selGroup]
-      await updateDoc(doc(db, 'members', member.id), { groupIds: newGroupIds })
-      const updated = { ...member, groupIds: newGroupIds }
+      // Store the date when this member joined this specific group
+      const groupJoinDates = { ...(member.groupJoinDates || {}), [selGroup]: selDate }
+      await updateDoc(doc(db, 'members', member.id), { groupIds: newGroupIds, groupJoinDates })
+      const updated = { ...member, groupIds: newGroupIds, groupJoinDates }
       setMembers(prev => [...prev, updated].sort((a, b) => a.fullName.localeCompare(b.fullName, 'es')))
       setExtraMembers(prev => prev.filter(em => em.id !== member.id))
       setAllMembers(prev => prev.map(am => am.id === member.id ? updated : am))

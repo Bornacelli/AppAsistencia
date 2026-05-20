@@ -15,7 +15,7 @@ import {
   Phone, NotePencil, UserPlus, DownloadSimple, FileArrowUp, SpinnerGap
 } from '@phosphor-icons/react'
 import { generateMembersTemplate, parseMembersFromExcel } from '../utils/excel'
-import { getAgeRange } from '../utils/members'
+import { getAgeRange, normalize } from '../utils/members'
 import { todayStr, formatDateShort, localDateStr } from '../utils/dates'
 
 const SPIRITUAL_LABEL = {
@@ -145,9 +145,9 @@ export default function Members() {
 
   const filtered = useMemo(() => {
     return people.filter(p => {
-      const q = search.toLowerCase()
+      const q = normalize(search)
       const matchSearch = !q ||
-        (p.fullName || '').toLowerCase().includes(q) ||
+        normalize(p.fullName).includes(q) ||
         (p.phone || '').includes(q)
       const matchGroup    = !filterGroup    || p.groupId === filterGroup || (p._data?.groupIds || []).includes(filterGroup)
       const matchStatus   = !filterStatus   || p.spiritualStatus === filterStatus

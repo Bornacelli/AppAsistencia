@@ -10,7 +10,8 @@
       "Bash(cd \"C:\\\\Users\\\\agm\\\\Documents\\\\Desarrollos\\\\Asistencia CIC\" && npm uninstall xlsx && npm install xlsx-js-style)",
       "Bash(cd \"C:\\\\Users\\\\agm\\\\Documents\\\\Desarrollos\\\\Asistencia CIC\" && rm -rf node_modules/.vite)",
       "Bash(find '/c/Users/agm/Documents/per/Desarrollos/Asistencia CIC/src' -type f \\\\\\(-name *.js -o -name *.vue -o -name *.php \\\\\\))",
-      "Bash(npx vite:*)"
+      "Bash(npx vite:*)",
+      "Bash(node *)"
     ]
   }
 }

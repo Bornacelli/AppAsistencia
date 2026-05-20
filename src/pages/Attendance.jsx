@@ -12,6 +12,7 @@ import {
   UserPlus, CloudCheck, Warning, CalendarBlank, ArrowCounterClockwise
 } from '@phosphor-icons/react'
 import { todayStr, formatDateShort } from '../utils/dates'
+import { normalize } from '../utils/members'
 
 export default function Attendance() {
   const { profile } = useAuth()
@@ -279,9 +280,9 @@ export default function Attendance() {
   // Current group filtered
   const filteredGroup = useMemo(() => {
     if (!search.trim()) return members
-    const q = search.toLowerCase()
+    const q = normalize(search)
     return members.filter(m =>
-      (m.fullName || '').toLowerCase().includes(q) ||
+      normalize(m.fullName).includes(q) ||
       (m.phone || '').includes(q)
     )
   }, [members, search])
@@ -289,9 +290,9 @@ export default function Attendance() {
   // Inactive members of this group matching search (or all if no search)
   const filteredInactive = useMemo(() => {
     if (!search.trim()) return inactiveMembers
-    const q = search.toLowerCase()
+    const q = normalize(search)
     return inactiveMembers.filter(m =>
-      (m.fullName || '').toLowerCase().includes(q) ||
+      normalize(m.fullName).includes(q) ||
       (m.phone || '').includes(q)
     )
   }, [inactiveMembers, search])
@@ -299,11 +300,11 @@ export default function Attendance() {
   // From other groups matching search
   const filteredOtherGroups = useMemo(() => {
     if (!search.trim()) return []
-    const q = search.toLowerCase()
+    const q = normalize(search)
     const currentIds = new Set([...members.map(m => m.id), ...extraMembers.map(m => m.id), ...inactiveMembers.map(m => m.id)])
     return allMembers.filter(m =>
       !currentIds.has(m.id) && (
-        (m.fullName || '').toLowerCase().includes(q) ||
+        normalize(m.fullName).includes(q) ||
         (m.phone || '').includes(q)
       )
     )
@@ -311,8 +312,8 @@ export default function Attendance() {
 
   const nameExistsAnywhere = useMemo(() => {
     if (!search.trim()) return true
-    const q = search.toLowerCase()
-    return allMembers.some(m => (m.fullName || '').toLowerCase() === q)
+    const q = normalize(search)
+    return allMembers.some(m => normalize(m.fullName) === q)
   }, [allMembers, search])
 
   const showAddCard = search.trim() && !nameExistsAnywhere &&

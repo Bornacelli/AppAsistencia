@@ -1,3 +1,7 @@
+export function normalize(str) {
+  return (str || '').normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase()
+}
+
 /**
  * Returns the effective list of group IDs for a member,
  * supporting both the legacy `groupId` (string) and new `groupIds` (array) fields.

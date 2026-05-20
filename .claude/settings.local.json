@@ -11,7 +11,11 @@
       "Bash(cd \"C:\\\\Users\\\\agm\\\\Documents\\\\Desarrollos\\\\Asistencia CIC\" && rm -rf node_modules/.vite)",
       "Bash(find '/c/Users/agm/Documents/per/Desarrollos/Asistencia CIC/src' -type f \\\\\\(-name *.js -o -name *.vue -o -name *.php \\\\\\))",
       "Bash(npx vite:*)",
-      "Bash(node *)"
+      "Bash(node *)",
+      "WebFetch(domain:www.mapcn.dev)",
+      "Bash(npm install *)",
+      "Bash(npm list *)",
+      "Bash(npm run *)"
     ]
   }
 }

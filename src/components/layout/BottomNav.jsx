@@ -1,4 +1,4 @@
-import { House, ClipboardText, Users, Bell, DotsThreeOutline, ChartBar, Gear, UserCircle, CalendarBlank, Cake, Warning, IdentificationCard, SignOut } from '@phosphor-icons/react'
+import { House, ClipboardText, Users, Bell, DotsThreeOutline, ChartBar, Gear, UserCircle, CalendarBlank, Cake, Warning, IdentificationCard, SignOut, UsersThree, MapTrifold } from '@phosphor-icons/react'
 import { NavLink, useNavigate } from 'react-router-dom'
 import { useState } from 'react'
 import { signOut } from 'firebase/auth'
@@ -161,8 +161,10 @@ export default function BottomNav() {
               <div className="my-3" style={{ borderTop: '1px solid var(--border)' }} />
               <p className="text-[9px] font-bold uppercase tracking-widest px-3 mb-1.5" style={{ color: 'var(--text-3)' }}>Gestión</p>
               {(isAdmin || isLeader) && <SideItem to="/reports"  icon={ChartBar}    label="Reportes" />}
-              {isAdmin               && <SideItem to="/leaders"  icon={UserCircle}  label="Líderes" />}
-              {isAdmin               && <SideItem to="/settings" icon={Gear}        label="Configuración" />}
+              {isAdmin               && <SideItem to="/leaders"           icon={UserCircle}  label="Líderes" />}
+              {isSuperAdmin          && <SideItem to="/consolidacion"     icon={MapTrifold}  label="Consolidación" />}
+              {isSuperAdmin          && <SideItem to="/grupos-familiares" icon={UsersThree}  label="Grupos Fam." />}
+              {isAdmin               && <SideItem to="/settings"          icon={Gear}        label="Configuración" />}
             </>
           )}
         </nav>
@@ -210,9 +212,11 @@ export default function BottomNav() {
               <MoreItem icon={ChartBar}      label="Historial"     to="/history"    onClose={closeDrawer} />
               <MoreItem icon={Cake}          label="Cumpleaños"    to="/birthdays"  onClose={closeDrawer} />
               <MoreItem icon={Warning}       label="Inasistencias" to="/absences"   onClose={closeDrawer} />
-              {isAdmin               && <MoreItem icon={UserCircle} label="Líderes"       to="/leaders"  onClose={closeDrawer} />}
-              {(isAdmin || isLeader) && <MoreItem icon={ChartBar}   label="Reportes"      to="/reports"  onClose={closeDrawer} />}
-              {isAdmin               && <MoreItem icon={Gear}       label="Configuración" to="/settings" onClose={closeDrawer} />}
+              {isAdmin               && <MoreItem icon={UserCircle}  label="Líderes"         to="/leaders"           onClose={closeDrawer} />}
+              {isSuperAdmin          && <MoreItem icon={MapTrifold} label="Consolidación"  to="/consolidacion"     onClose={closeDrawer} />}
+              {isSuperAdmin          && <MoreItem icon={UsersThree} label="Grupos Fam."    to="/grupos-familiares" onClose={closeDrawer} />}
+              {(isAdmin || isLeader) && <MoreItem icon={ChartBar}   label="Reportes"       to="/reports"          onClose={closeDrawer} />}
+              {isAdmin               && <MoreItem icon={Gear}       label="Configuración"  to="/settings"         onClose={closeDrawer} />}
               <MoreItem icon={IdentificationCard} label="Mi perfil" to="/profile" onClose={closeDrawer} />
 
               <div className="my-2" style={{ borderTop: '1px solid var(--border)' }} />

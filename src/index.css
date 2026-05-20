@@ -129,3 +129,8 @@ input, textarea, select {
   -webkit-text-fill-color: transparent;
   background-clip: text;
 }
+
+details.maplibregl-ctrl.maplibregl-ctrl-attrib.maplibregl-compact.maplibregl-compact-show {
+  display: none;
+}
+

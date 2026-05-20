@@ -12,8 +12,8 @@ import { Inp, Sel } from '../components/ui/Inp'
 import { UserCircle, Plus, PencilSimple, ShieldCheck, User, Users } from '@phosphor-icons/react'
 import { todayStr } from '../utils/dates'
 
-const ROLE_LABEL = { super_admin: 'Super Admin', admin: 'Administrador', leader: 'Líder', assistant: 'Asistente' }
-const ROLE_COLOR = { super_admin: '#f472b6', admin: '#a78bfa', leader: 'var(--accent)', assistant: 'var(--green)' }
+const ROLE_LABEL = { super_admin: 'Super Admin', admin: 'Administrador', leader: 'Líder', assistant: 'Asistente', consolidacion: 'Consolidación' }
+const ROLE_COLOR = { super_admin: '#f472b6', admin: '#a78bfa', leader: 'var(--accent)', assistant: 'var(--green)', consolidacion: '#f59e0b' }
 
 export default function Leaders() {
   const { profile } = useAuth()
@@ -190,6 +190,7 @@ export default function Leaders() {
             {profile.role === 'super_admin' && <option value="admin">Administrador</option>}
             <option value="leader">Líder</option>
             <option value="assistant">Asistente</option>
+            <option value="consolidacion">Consolidación</option>
           </Sel>
 
           {/* Group assignment — only for leaders and assistants */}

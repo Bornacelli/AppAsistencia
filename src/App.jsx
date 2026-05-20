@@ -23,6 +23,8 @@ import Meetings     from './pages/Meetings'
 import Birthdays    from './pages/Birthdays'
 import Absences     from './pages/Absences'
 import Profile      from './pages/Profile'
+import Consolidacion  from './pages/Consolidacion'
+import FamilyGroups   from './pages/FamilyGroups'
 
 export default function App() {
   const { loading, user, hasUsers } = useAuth()
@@ -100,6 +102,13 @@ export default function App() {
 
         <Route path="/profile" element={
           <ProtectedRoute><Profile /></ProtectedRoute>
+        } />
+
+        <Route path="/consolidacion" element={
+          <ProtectedRoute roles={['consolidacion', 'super_admin']}><Consolidacion /></ProtectedRoute>
+        } />
+        <Route path="/grupos-familiares" element={
+          <ProtectedRoute roles={['super_admin', 'consolidacion']}><FamilyGroups /></ProtectedRoute>
         } />
 
         <Route path="*" element={<Navigate to="/" replace />} />

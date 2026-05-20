@@ -26,6 +26,11 @@ export default function ProtectedRoute({ children, roles }) {
     )
   }
 
+  // Consolidacion users: redirect to /consolidacion if they try to access other routes
+  if (profile.role === 'consolidacion' && !roles?.includes('consolidacion')) {
+    return <Navigate to="/consolidacion" replace />
+  }
+
   // Role check
   if (roles && !roles.includes(profile.role)) {
     return <Navigate to="/" replace />
@@ -39,6 +44,15 @@ export default function ProtectedRoute({ children, roles }) {
         <p className="text-sm font-semibold" style={{ color: 'var(--amber)' }}>
           Tu cuenta está inactiva. Contacta al administrador.
         </p>
+      </div>
+    )
+  }
+
+  // Consolidacion users get a minimal layout (no nav, no sidebar)
+  if (profile.role === 'consolidacion') {
+    return (
+      <div className="flex flex-col min-h-dvh" style={{ background: 'var(--bg)' }}>
+        {children}
       </div>
     )
   }

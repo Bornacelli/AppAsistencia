@@ -194,8 +194,46 @@ export default function Attendance() {
       setSaveStatus('saved')
       setTimeout(() => setSaveStatus('idle'), 2000)
       checkAutoDeactivate()
+      checkAndPromoteNewMembers(att)
     } catch {
       setSaveStatus('error')
+    }
+  }
+
+  async function checkAndPromoteNewMembers(att) {
+    const currentMembers = membersRef.current
+    const newMembersPresent = currentMembers.filter(m =>
+      m.spiritualStatus === 'new' && att[m.id] === 'present'
+    )
+    if (newMembersPresent.length === 0) return
+
+    try {
+      const groupFilter = selGroup === '__default__' ? null : selGroup
+      const attSnap = await getDocs(
+        query(collection(db, 'attendance'), where('groupId', '==', groupFilter))
+      )
+      const attDocs = attSnap.docs.map(d => d.data())
+
+      const toPromote = newMembersPresent.filter(member => {
+        const presentCount = attDocs.filter(a => a.records?.[member.id] === 'present').length
+        return presentCount >= 2
+      })
+
+      if (toPromote.length === 0) return
+
+      await Promise.all(toPromote.map(m =>
+        updateDoc(doc(db, 'members', m.id), { spiritualStatus: 'member' })
+      ))
+
+      const promoteIds = new Set(toPromote.map(m => m.id))
+      const updater = m => promoteIds.has(m.id) ? { ...m, spiritualStatus: 'member' } : m
+      setMembers(prev => prev.map(updater))
+      setAllMembers(prev => prev.map(updater))
+      membersRef.current = membersRef.current.map(updater)
+
+      toPromote.forEach(m => ok(`${m.fullName} actualizado a Miembro`))
+    } catch (e) {
+      console.error('Auto-promote error:', e)
     }
   }
 

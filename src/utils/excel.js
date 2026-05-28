@@ -168,11 +168,14 @@ export function exportMembersList(members, groupName = 'Todos', ageRanges = [], 
     return mems.map(m => {
       const age   = getAge(m.birthDate)
       const range = getAgeRange(m.birthDate, ageRanges)
+      const redLabel = m.redRole
+        ? `${m.redRole === 'leader' ? 'Líder' : 'Apoyo'} ${m.redRangeName || ''}`
+        : (range?.name || '')
       return [
         m.fullName   || '',
         SEX_LABEL[m.sex] || '',
         age !== null ? age : '',
-        range?.name  || '',
+        redLabel,
         m.phone      || '',
         m.address    || '',
         m.birthDate  || '',
@@ -198,13 +201,17 @@ export function exportMembersList(members, groupName = 'Todos', ageRanges = [], 
 
 // ─── Clasificación por rangos de edad ────────────────────────────────────────
 export function exportAgeRangeList(members, ageRanges, groupName = 'Todos') {
-  const headers = ['Nombre', 'Sexo', 'Edad', 'Teléfono', 'F. Nacimiento']
+  const headers = ['Nombre', 'Sexo', 'Edad', 'Rol de Red', 'Teléfono', 'F. Nacimiento']
   const wb = XLSX.utils.book_new()
   const rangesWithFallback = [...ageRanges, { name: 'Sin clasificar', _special: true }]
   rangesWithFallback.forEach(range => {
     const rangeMembers = range._special
-      ? members.filter(m => !getAgeRange(m.birthDate, ageRanges))
-      : members.filter(m => getAgeRange(m.birthDate, ageRanges)?.name === range.name)
+      ? members.filter(m => !m.redRangeName && !getAgeRange(m.birthDate, ageRanges))
+      : members.filter(m =>
+          m.redRangeName
+            ? m.redRangeName === range.name
+            : getAgeRange(m.birthDate, ageRanges)?.name === range.name
+        )
     if (rangeMembers.length === 0) return
     const rows = rangeMembers
       .sort((a, b) => (a.fullName || '').localeCompare(b.fullName || '', 'es'))
@@ -212,11 +219,12 @@ export function exportAgeRangeList(members, ageRanges, groupName = 'Todos') {
         m.fullName       || '',
         SEX_LABEL[m.sex] || '',
         getAge(m.birthDate) ?? '',
+        m.redRole ? (m.redRole === 'leader' ? 'Líder' : 'Apoyo') : '',
         m.phone          || '',
         m.birthDate      || '',
       ])
     const sheetName = range.name.slice(0, 31)
-    XLSX.utils.book_append_sheet(wb, buildSheet(sheetName, headers, rows, null, [30, 10, 8, 16, 14]), sheetName)
+    XLSX.utils.book_append_sheet(wb, buildSheet(sheetName, headers, rows, null, [30, 10, 8, 12, 16, 14]), sheetName)
   })
   if (wb.SheetNames.length === 0) return
   const filename = groupName === 'Todos' ? 'Clasificacion_Edades' : `Clasificacion_Edades_${groupName.replace(/\s+/g, '_')}`
@@ -344,6 +352,127 @@ export function parseMembersFromExcel(file, groups) {
     reader.onerror = reject
     reader.readAsArrayBuffer(file)
   })
+}
+
+// ─── Plantilla importación Grupos Familiares ──────────────────────────────────
+export function generateFamilyGroupsTemplate() {
+  const wb      = XLSX.utils.book_new()
+  const ws      = {}
+  const headers = [
+    'Nombre del grupo *', 'Zona / Sector', 'Ciudad *', 'Barrio',
+    'Dirección (calle) *',
+    'Líder 1 - Nombre', 'Líder 1 - Teléfono',
+    'Líder 2 - Nombre', 'Líder 2 - Teléfono',
+  ]
+  const N = headers.length
+
+  const sample = [
+    'Grupo Centenario', 'Zona Norte', 'Soledad', 'Ferrocarril',
+    'Calle 25 # 26-59',
+    'Jaquelin Jiménez', '+57 300 123 4567',
+    'Julio Jaramillo',  '+57 311 987 6543',
+  ]
+  const info = [
+    '← Obligatorio', '', '← Obligatorio (ej: Soledad)', 'Opcional',
+    '← Obligatorio',
+    '', 'Formato: +57 300 000 0000',
+    'Opcional si hay segundo líder', '',
+  ]
+
+  headers.forEach((h, c) => { ws[XLSX.utils.encode_cell({ r: 0, c })] = headerCell(h) })
+  sample.forEach((v, c) => {
+    ws[XLSX.utils.encode_cell({ r: 1, c })] = cell(v, { bg: 'F0FDF4', fg: '14532D', align: c === 0 ? 'left' : 'center' })
+  })
+  info.forEach((v, c) => {
+    ws[XLSX.utils.encode_cell({ r: 2, c })] = cell(v, { bg: 'F8FAFC', fg: '64748B', italic: true, align: c === 0 ? 'left' : 'center' })
+  })
+
+  ws['!ref']  = XLSX.utils.encode_range({ s: { r: 0, c: 0 }, e: { r: 2, c: N - 1 } })
+  ws['!cols'] = [{ wch: 24 }, { wch: 16 }, { wch: 14 }, { wch: 18 }, { wch: 22 }, { wch: 24 }, { wch: 22 }, { wch: 24 }, { wch: 22 }]
+  ws['!rows'] = [{ hpt: 24 }, { hpt: 18 }, { hpt: 18 }]
+
+  XLSX.utils.book_append_sheet(wb, ws, 'Grupos Familiares')
+  XLSX.writeFile(wb, 'Plantilla_Grupos_Familiares.xlsx')
+}
+
+// ─── Parsear grupos familiares desde Excel ────────────────────────────────────
+export function parseFamilyGroupsFromExcel(file) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader()
+    reader.onload = (e) => {
+      try {
+        const wb   = XLSX.read(e.target.result, { type: 'array' })
+        const ws   = wb.Sheets[wb.SheetNames[0]]
+        const rows = XLSX.utils.sheet_to_json(ws, { header: 1, defval: '' })
+
+        const groups = []
+        for (let i = 1; i < rows.length; i++) {
+          const r    = rows[i]
+          const name = cellStr(r[0])
+          if (!name || name === '← Obligatorio') continue
+          const street = cellStr(r[4])
+          if (!street) continue
+
+          const leaders = []
+          if (cellStr(r[5])) leaders.push({ name: cellStr(r[5]), phone: cellStr(r[6]) })
+          if (cellStr(r[7])) leaders.push({ name: cellStr(r[7]), phone: cellStr(r[8]) })
+
+          groups.push({
+            name:         name,
+            zone:         cellStr(r[1]),
+            city:         cellStr(r[2]) || 'Soledad',
+            neighborhood: cellStr(r[3]),
+            street:       street,
+            leaders,
+            active: true,
+          })
+        }
+        resolve(groups)
+      } catch (err) {
+        reject(err)
+      }
+    }
+    reader.onerror = reject
+    reader.readAsArrayBuffer(file)
+  })
+}
+
+// ─── Tabla de asistencia por rango de reuniones (sin totales ni %) ────────────
+export function exportAttendanceRange(members, meetings, groupName, dateFrom, dateTo) {
+  function shortDate(str) {
+    if (!str) return ''
+    const [, m, d] = str.split('-')
+    return `${d}/${m}`
+  }
+
+  const headers = ['Nombre', ...meetings.map(r => shortDate(r.date))]
+  const N = headers.length
+  const ws = {}
+
+  headers.forEach((h, c) => { ws[XLSX.utils.encode_cell({ r: 0, c })] = headerCell(h) })
+
+  members.forEach((m, ri) => {
+    const bg = ri % 2 === 0 ? C.rowEven : C.rowOdd
+    ws[XLSX.utils.encode_cell({ r: ri + 1, c: 0 })] = cell(m.fullName || '', { bg, fg: C.rowFg, align: 'left' })
+    meetings.forEach((r, ci) => {
+      const st = r.records?.[m.id]
+      const attended = st === 'present' || st === 'late'
+      ws[XLSX.utils.encode_cell({ r: ri + 1, c: ci + 1 })] = cell(
+        attended ? 'Sí' : 'No',
+        { bg: attended ? 'DCFCE7' : 'FEE2E2', fg: attended ? '166534' : '991B1B', align: 'center', bold: true }
+      )
+    })
+  })
+
+  ws['!ref']  = XLSX.utils.encode_range({ s: { r: 0, c: 0 }, e: { r: members.length, c: N - 1 } })
+  ws['!cols'] = [{ wch: 28 }, ...meetings.map(() => ({ wch: 9 }))]
+  ws['!rows'] = [{ hpt: 24 }, ...members.map(() => ({ hpt: 18 }))]
+
+  const rangeLabel = `${dateFrom || ''}_${dateTo || ''}`.replace(/-/g, '')
+  const sheetName  = groupName.slice(0, 31)
+  const wb = XLSX.utils.book_new()
+  XLSX.utils.book_append_sheet(wb, ws, sheetName)
+  XLSX.writeFile(wb, `Asistencia_${groupName.replace(/\s+/g, '_')}_${rangeLabel}.xlsx`)
 }
 
 // ─── Reporte mensual de asistencia por grupo ──────────────────────────────────

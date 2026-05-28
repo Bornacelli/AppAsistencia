@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useMemo } from 'react'
 import { doc, getDoc, setDoc, collection, getDocs, addDoc, updateDoc, writeBatch } from 'firebase/firestore'
 import { db } from '../firebase'
 import { useAuth } from '../context/AuthContext'
@@ -6,7 +6,8 @@ import { useToast } from '../context/ToastContext'
 import LoadingSpinner from '../components/ui/LoadingSpinner'
 import Modal from '../components/ui/Modal'
 import { Inp } from '../components/ui/Inp'
-import { Gear, Plus, PencilSimple, CheckSquare, Trash } from '@phosphor-icons/react'
+import { Gear, Plus, PencilSimple, Trash, UsersThree, X, MagnifyingGlass } from '@phosphor-icons/react'
+import { normalize } from '../utils/members'
 
 export default function Settings() {
   const { profile } = useAuth()
@@ -17,10 +18,11 @@ export default function Settings() {
   const [loading,      setLoading]      = useState(true)
   const [saving,       setSaving]       = useState(false)
   const [reactivating, setReactivating] = useState(false)
-  const [groups,   setGroups]   = useState([])
-  const [modal,    setModal]    = useState(null)
-  const [selGroup, setSelGroup] = useState(null)
-  const [groupForm, setGroupForm] = useState({ name: '', active: true })
+  const [groups,       setGroups]       = useState([])
+  const [members,      setMembers]      = useState([])
+  const [modal,        setModal]        = useState(null)
+  const [selGroup,     setSelGroup]     = useState(null)
+  const [groupForm,    setGroupForm]    = useState({ name: '', active: true })
 
   const [config, setConfig] = useState({
     churchName:              '',
@@ -29,8 +31,16 @@ export default function Settings() {
     inactiveAfterMeetings:   8,
     ageRanges:               [],
   })
-  const [rangeModal, setRangeModal] = useState(false)
-  const [rangeForm,  setRangeForm]  = useState({ name: '', min: '', max: '' })
+  const [rangeModal,      setRangeModal]      = useState(false)
+  const [rangeForm,       setRangeForm]       = useState({ name: '', min: '', max: '' })
+  const [editingRangeIdx, setEditingRangeIdx] = useState(null) // null = nuevo, number = editando
+
+  // Network role management
+  const [netModal,     setNetModal]     = useState(false)
+  const [selRange,     setSelRange]     = useState(null)
+  const [assignRole,   setAssignRole]   = useState(null) // 'leader' | 'support'
+  const [memberSearch, setMemberSearch] = useState('')
+
   const setC = (k, v) => setConfig(c => ({ ...c, [k]: v }))
 
   useEffect(() => { loadData() }, [])
@@ -38,9 +48,10 @@ export default function Settings() {
   async function loadData() {
     setLoading(true)
     try {
-      const [cfgSnap, gSnap] = await Promise.all([
+      const [cfgSnap, gSnap, mSnap] = await Promise.all([
         getDoc(doc(db, 'config', 'general')),
         getDocs(collection(db, 'groups')),
+        getDocs(collection(db, 'members')),
       ])
       if (cfgSnap.exists()) {
         const d = cfgSnap.data()
@@ -53,6 +64,12 @@ export default function Settings() {
         })
       }
       setGroups(gSnap.docs.map(d => ({ id: d.id, ...d.data() })).sort((a, b) => (a.name || '').localeCompare(b.name || '', 'es')))
+      setMembers(
+        mSnap.docs
+          .map(d => ({ id: d.id, ...d.data() }))
+          .filter(m => m.active !== false)
+          .sort((a, b) => (a.fullName || '').localeCompare(b.fullName || '', 'es'))
+      )
     } catch (e) { console.error(e) }
     finally { setLoading(false) }
   }
@@ -113,16 +130,41 @@ export default function Settings() {
     } catch { toastError('Error al guardar rangos') }
   }
 
-  async function handleRangeAdd(e) {
+  function openAddRange() {
+    setEditingRangeIdx(null)
+    setRangeForm({ name: '', min: '', max: '' })
+    setRangeModal(true)
+  }
+
+  function openEditRange(i) {
+    setEditingRangeIdx(i)
+    const r = config.ageRanges[i]
+    setRangeForm({ name: r.name, min: String(r.min), max: String(r.max) })
+    setRangeModal(true)
+  }
+
+  async function handleRangeSave(e) {
     e.preventDefault()
     if (!rangeForm.name.trim() || rangeForm.min === '' || rangeForm.max === '') { toastError('Completa todos los campos'); return }
     if (Number(rangeForm.min) > Number(rangeForm.max)) { toastError('La edad mínima no puede superar la máxima'); return }
-    const newRanges = [...config.ageRanges, { name: rangeForm.name.trim(), min: Number(rangeForm.min), max: Number(rangeForm.max) }]
+
+    let newRanges
+    if (editingRangeIdx !== null) {
+      newRanges = config.ageRanges.map((r, i) =>
+        i === editingRangeIdx
+          ? { name: rangeForm.name.trim(), min: Number(rangeForm.min), max: Number(rangeForm.max) }
+          : r
+      )
+    } else {
+      newRanges = [...config.ageRanges, { name: rangeForm.name.trim(), min: Number(rangeForm.min), max: Number(rangeForm.max) }]
+    }
+
     setC('ageRanges', newRanges)
     setRangeForm({ name: '', min: '', max: '' })
     setRangeModal(false)
     await saveAgeRanges(newRanges)
-    ok('Rango agregado')
+    ok(editingRangeIdx !== null ? 'Rango actualizado' : 'Rango agregado')
+    setEditingRangeIdx(null)
   }
 
   async function handleRangeDelete(index) {
@@ -144,6 +186,42 @@ export default function Settings() {
     setModal('group')
   }
 
+  // Network role management
+  function openNetModal(range) {
+    setSelRange(range)
+    setAssignRole(null)
+    setMemberSearch('')
+    setNetModal(true)
+  }
+
+  const netLeaders = selRange ? members.filter(m => m.redRole === 'leader' && m.redRangeName === selRange.name) : []
+  const netSupport = selRange ? members.filter(m => m.redRole === 'support' && m.redRangeName === selRange.name) : []
+
+  const searchFiltered = useMemo(() => {
+    if (!memberSearch.trim() || !assignRole) return []
+    const q = normalize(memberSearch)
+    return members.filter(m => !m.redRole && normalize(m.fullName).includes(q)).slice(0, 6)
+  }, [memberSearch, members, assignRole])
+
+  async function handleAssignRole(member) {
+    if (!assignRole || !selRange) return
+    try {
+      await updateDoc(doc(db, 'members', member.id), { redRole: assignRole, redRangeName: selRange.name })
+      setMembers(prev => prev.map(m => m.id === member.id ? { ...m, redRole: assignRole, redRangeName: selRange.name } : m))
+      setMemberSearch('')
+      setAssignRole(null)
+      ok(`${member.fullName} asignado como ${assignRole === 'leader' ? 'Líder' : 'Apoyo'} de Red ${selRange.name}`)
+    } catch { toastError('Error al asignar') }
+  }
+
+  async function handleRemoveRole(member) {
+    try {
+      await updateDoc(doc(db, 'members', member.id), { redRole: null, redRangeName: null })
+      setMembers(prev => prev.map(m => m.id === member.id ? { ...m, redRole: null, redRangeName: null } : m))
+      ok(`Rol de ${member.fullName} removido`)
+    } catch { toastError('Error') }
+  }
+
   if (loading) return (
     <div style={{ background: 'var(--bg)', minHeight: '100%' }}>
       <div className="sticky top-0 z-10 px-4 py-3" style={{ background: 'var(--surface)', borderBottom: '1px solid var(--border)', paddingTop: 'max(12px, env(safe-area-inset-top))' }}>
@@ -162,6 +240,7 @@ export default function Settings() {
       </div>
 
       <div className="px-4 py-4 flex flex-col gap-6">
+        {/* General config — super_admin only */}
         <form onSubmit={saveConfig} className={`flex flex-col gap-4${!isSuperAdmin ? ' hidden' : ''}`}>
           <p className="text-[11px] font-bold uppercase tracking-widest" style={{ color: 'var(--text-2)' }}>General</p>
 
@@ -237,12 +316,12 @@ export default function Settings() {
           </button>
         </form>
 
-        {/* Age ranges — visible for super_admin, admin and leader */}
+        {/* Age ranges */}
         {canManageRanges && (
           <div className="flex flex-col gap-2">
             <div className="flex items-center justify-between">
               <p className="text-[11px] font-bold uppercase tracking-widest" style={{ color: 'var(--text-2)' }}>Rangos de edad</p>
-              <button type="button" onClick={() => setRangeModal(true)}
+              <button type="button" onClick={openAddRange}
                 className="h-8 px-3 flex items-center gap-1.5 rounded-[8px] text-xs font-bold press"
                 style={{ background: 'var(--accent-g)', color: 'white' }}>
                 <Plus size={14} weight="bold" /> Agregar
@@ -257,6 +336,11 @@ export default function Settings() {
                     style={{ background: 'var(--surface)', border: '1px solid var(--border)' }}>
                     <span className="flex-1 text-sm font-semibold" style={{ color: 'var(--text)' }}>{r.name}</span>
                     <span className="text-xs font-bold" style={{ color: 'var(--text-2)' }}>{r.min}–{r.max} años</span>
+                    <button type="button" onClick={() => openEditRange(i)}
+                      className="w-7 h-7 flex items-center justify-center rounded-[7px] press"
+                      style={{ background: 'var(--card)', border: '1px solid var(--border)', color: 'var(--text-2)' }}>
+                      <PencilSimple size={13} />
+                    </button>
                     <button type="button" onClick={() => handleRangeDelete(i)}
                       className="w-7 h-7 flex items-center justify-center rounded-[7px] press"
                       style={{ background: 'var(--card)', border: '1px solid var(--border)', color: 'var(--red)' }}>
@@ -268,6 +352,52 @@ export default function Settings() {
             )}
             <p className="text-xs" style={{ color: 'var(--text-3)' }}>
               Clasifica miembros por edad para facilitar la formación de grupos por redes
+            </p>
+          </div>
+        )}
+
+        {/* Network roles — visible only if there are age ranges */}
+        {canManageRanges && config.ageRanges.length > 0 && (
+          <div className="flex flex-col gap-2">
+            <p className="text-[11px] font-bold uppercase tracking-widest" style={{ color: 'var(--text-2)' }}>Roles de Red</p>
+            <div className="flex flex-col gap-1.5">
+              {config.ageRanges.map((r, i) => {
+                const leaders = members.filter(m => m.redRole === 'leader' && m.redRangeName === r.name)
+                const support = members.filter(m => m.redRole === 'support' && m.redRangeName === r.name)
+                return (
+                  <div key={i} className="flex items-center gap-3 px-3 py-2.5 rounded-[9px]"
+                    style={{ background: 'var(--surface)', border: '1px solid var(--border)' }}>
+                    <div className="flex-1 min-w-0">
+                      <p className="text-sm font-semibold" style={{ color: 'var(--text)' }}>{r.name}</p>
+                      <div className="flex items-center gap-1.5 flex-wrap mt-1">
+                        {leaders.map(m => (
+                          <span key={m.id} className="text-[9px] font-bold px-1.5 py-0.5 rounded-[4px]"
+                            style={{ background: 'rgba(167,139,250,0.15)', color: '#a78bfa', border: '1px solid rgba(167,139,250,0.3)' }}>
+                            Líder: {m.fullName.split(' ')[0]}
+                          </span>
+                        ))}
+                        {support.map(m => (
+                          <span key={m.id} className="text-[9px] font-bold px-1.5 py-0.5 rounded-[4px]"
+                            style={{ background: 'rgba(59,130,246,0.1)', color: 'var(--accent)', border: '1px solid rgba(59,130,246,0.2)' }}>
+                            Apoyo: {m.fullName.split(' ')[0]}
+                          </span>
+                        ))}
+                        {leaders.length === 0 && support.length === 0 && (
+                          <span className="text-[9px]" style={{ color: 'var(--text-3)' }}>Sin roles asignados</span>
+                        )}
+                      </div>
+                    </div>
+                    <button type="button" onClick={() => openNetModal(r)}
+                      className="h-8 px-2.5 flex items-center gap-1.5 rounded-[8px] text-xs font-bold press flex-shrink-0"
+                      style={{ background: 'var(--card)', border: '1px solid var(--border)', color: 'var(--text-2)' }}>
+                      <UsersThree size={14} /> Gestionar
+                    </button>
+                  </div>
+                )
+              })}
+            </div>
+            <p className="text-xs" style={{ color: 'var(--text-3)' }}>
+              Asigna líderes y apoyo para cada red
             </p>
           </div>
         )}
@@ -351,9 +481,13 @@ export default function Settings() {
         </form>
       </Modal>
 
-      {/* Range modal */}
-      <Modal open={rangeModal} onClose={() => { setRangeModal(false); setRangeForm({ name: '', min: '', max: '' }) }} title="Agregar rango de edad">
-        <form onSubmit={handleRangeAdd} className="flex flex-col gap-4">
+      {/* Range modal — add or edit */}
+      <Modal
+        open={rangeModal}
+        onClose={() => { setRangeModal(false); setRangeForm({ name: '', min: '', max: '' }); setEditingRangeIdx(null) }}
+        title={editingRangeIdx !== null ? 'Editar rango de edad' : 'Agregar rango de edad'}
+      >
+        <form onSubmit={handleRangeSave} className="flex flex-col gap-4">
           <Inp label="Nombre del rango *" value={rangeForm.name} onChange={e => setRangeForm(f => ({ ...f, name: e.target.value }))} placeholder="Ej: Jóvenes, Adultos, Niños" autoCapitalize="words" />
           <div className="flex gap-3">
             <Inp label="Edad mínima *" type="number" value={rangeForm.min} onChange={e => setRangeForm(f => ({ ...f, min: e.target.value }))} placeholder="0" />
@@ -362,9 +496,148 @@ export default function Settings() {
           <button type="submit"
             className="h-12 rounded-[12px] font-bold text-sm flex items-center justify-center gap-2 press"
             style={{ background: 'var(--accent-g)', color: 'white' }}>
-            Agregar rango
+            {editingRangeIdx !== null ? 'Guardar cambios' : 'Agregar rango'}
           </button>
         </form>
+      </Modal>
+
+      {/* Network roles modal */}
+      <Modal
+        open={netModal}
+        onClose={() => { setNetModal(false); setSelRange(null); setAssignRole(null); setMemberSearch('') }}
+        title={`Red ${selRange?.name || ''}`}
+      >
+        {selRange && (
+          <div className="flex flex-col gap-5">
+            {/* Leaders */}
+            <div>
+              <div className="flex items-center justify-between mb-2">
+                <p className="text-[11px] font-bold uppercase tracking-widest" style={{ color: 'var(--text-2)' }}>
+                  Líderes de Red ({netLeaders.length})
+                </p>
+                {assignRole !== 'leader' && (
+                  <button
+                    onClick={() => { setAssignRole('leader'); setMemberSearch('') }}
+                    className="h-7 px-2.5 text-[11px] font-bold rounded-[7px] press"
+                    style={{ background: 'rgba(167,139,250,0.12)', color: '#a78bfa', border: '1px solid rgba(167,139,250,0.3)' }}>
+                    + Agregar
+                  </button>
+                )}
+              </div>
+              {netLeaders.length === 0 && assignRole !== 'leader' && (
+                <p className="text-xs mb-1" style={{ color: 'var(--text-3)' }}>Sin líderes asignados aún</p>
+              )}
+              <div className="flex flex-col gap-1.5">
+                {netLeaders.map(m => (
+                  <div key={m.id} className="flex items-center gap-2 px-3 py-2 rounded-[8px]"
+                    style={{ background: 'var(--surface)', border: '1px solid rgba(167,139,250,0.3)' }}>
+                    <span className="flex-1 text-sm font-semibold truncate" style={{ color: 'var(--text)' }}>{m.fullName}</span>
+                    <button onClick={() => handleRemoveRole(m)}
+                      className="w-6 h-6 flex items-center justify-center rounded-full flex-shrink-0 press"
+                      style={{ background: 'rgba(239,68,68,0.1)', color: 'var(--red)' }}>
+                      <X size={11} weight="bold" />
+                    </button>
+                  </div>
+                ))}
+              </div>
+              {assignRole === 'leader' && (
+                <div className="mt-2 flex flex-col gap-1">
+                  <div className="flex items-center gap-2 px-3 py-2 rounded-[9px]"
+                    style={{ background: 'var(--surface)', border: '1px solid var(--accent)' }}>
+                    <MagnifyingGlass size={14} style={{ color: 'var(--text-3)', flexShrink: 0 }} />
+                    <input
+                      value={memberSearch}
+                      onChange={e => setMemberSearch(e.target.value)}
+                      placeholder="Buscar miembro..."
+                      autoFocus
+                      className="flex-1 bg-transparent text-sm outline-none"
+                      style={{ color: 'var(--text)', fontFamily: 'inherit' }}
+                    />
+                  </div>
+                  {searchFiltered.map(m => (
+                    <button key={m.id} onClick={() => handleAssignRole(m)}
+                      className="text-left px-3 py-2 rounded-[8px] text-sm font-semibold press"
+                      style={{ background: 'var(--card)', border: '1px solid var(--border)', color: 'var(--text)' }}>
+                      {m.fullName}
+                    </button>
+                  ))}
+                  {memberSearch.trim() && searchFiltered.length === 0 && (
+                    <p className="text-xs px-1" style={{ color: 'var(--text-3)' }}>Sin resultados</p>
+                  )}
+                  <button onClick={() => { setAssignRole(null); setMemberSearch('') }}
+                    className="text-[11px] text-left px-1 mt-1" style={{ color: 'var(--text-3)' }}>
+                    Cancelar
+                  </button>
+                </div>
+              )}
+            </div>
+
+            <div style={{ height: '1px', background: 'var(--border)' }} />
+
+            {/* Support */}
+            <div>
+              <div className="flex items-center justify-between mb-2">
+                <p className="text-[11px] font-bold uppercase tracking-widest" style={{ color: 'var(--text-2)' }}>
+                  Apoyo de Red ({netSupport.length})
+                </p>
+                {assignRole !== 'support' && (
+                  <button
+                    onClick={() => { setAssignRole('support'); setMemberSearch('') }}
+                    className="h-7 px-2.5 text-[11px] font-bold rounded-[7px] press"
+                    style={{ background: 'rgba(59,130,246,0.12)', color: 'var(--accent)', border: '1px solid rgba(59,130,246,0.3)' }}>
+                    + Agregar
+                  </button>
+                )}
+              </div>
+              {netSupport.length === 0 && assignRole !== 'support' && (
+                <p className="text-xs mb-1" style={{ color: 'var(--text-3)' }}>Sin apoyo asignado aún</p>
+              )}
+              <div className="flex flex-col gap-1.5">
+                {netSupport.map(m => (
+                  <div key={m.id} className="flex items-center gap-2 px-3 py-2 rounded-[8px]"
+                    style={{ background: 'var(--surface)', border: '1px solid rgba(59,130,246,0.25)' }}>
+                    <span className="flex-1 text-sm font-semibold truncate" style={{ color: 'var(--text)' }}>{m.fullName}</span>
+                    <button onClick={() => handleRemoveRole(m)}
+                      className="w-6 h-6 flex items-center justify-center rounded-full flex-shrink-0 press"
+                      style={{ background: 'rgba(239,68,68,0.1)', color: 'var(--red)' }}>
+                      <X size={11} weight="bold" />
+                    </button>
+                  </div>
+                ))}
+              </div>
+              {assignRole === 'support' && (
+                <div className="mt-2 flex flex-col gap-1">
+                  <div className="flex items-center gap-2 px-3 py-2 rounded-[9px]"
+                    style={{ background: 'var(--surface)', border: '1px solid var(--accent)' }}>
+                    <MagnifyingGlass size={14} style={{ color: 'var(--text-3)', flexShrink: 0 }} />
+                    <input
+                      value={memberSearch}
+                      onChange={e => setMemberSearch(e.target.value)}
+                      placeholder="Buscar miembro..."
+                      autoFocus
+                      className="flex-1 bg-transparent text-sm outline-none"
+                      style={{ color: 'var(--text)', fontFamily: 'inherit' }}
+                    />
+                  </div>
+                  {searchFiltered.map(m => (
+                    <button key={m.id} onClick={() => handleAssignRole(m)}
+                      className="text-left px-3 py-2 rounded-[8px] text-sm font-semibold press"
+                      style={{ background: 'var(--card)', border: '1px solid var(--border)', color: 'var(--text)' }}>
+                      {m.fullName}
+                    </button>
+                  ))}
+                  {memberSearch.trim() && searchFiltered.length === 0 && (
+                    <p className="text-xs px-1" style={{ color: 'var(--text-3)' }}>Sin resultados</p>
+                  )}
+                  <button onClick={() => { setAssignRole(null); setMemberSearch('') }}
+                    className="text-[11px] text-left px-1 mt-1" style={{ color: 'var(--text-3)' }}>
+                    Cancelar
+                  </button>
+                </div>
+              )}
+            </div>
+          </div>
+        )}
       </Modal>
     </div>
   )

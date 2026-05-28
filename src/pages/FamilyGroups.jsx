@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { collection, getDocs, addDoc, updateDoc, doc, serverTimestamp } from 'firebase/firestore'
 import { db } from '../firebase'
 import { useAuth } from '../context/AuthContext'
@@ -7,8 +7,9 @@ import Modal from '../components/ui/Modal'
 import LoadingSpinner from '../components/ui/LoadingSpinner'
 import EmptyState from '../components/ui/EmptyState'
 import { Inp } from '../components/ui/Inp'
-import { Plus, PencilSimple, Users, Trash, MapPin, ArrowLeft } from '@phosphor-icons/react'
+import { Plus, PencilSimple, Users, Trash, MapPin, ArrowLeft, FileArrowUp, DownloadSimple } from '@phosphor-icons/react'
 import { Link } from 'react-router-dom'
+import { generateFamilyGroupsTemplate, parseFamilyGroupsFromExcel } from '../utils/excel'
 
 const DEFAULT_CITY = 'Soledad'
 
@@ -47,6 +48,11 @@ export default function FamilyGroups() {
   const [saving,    setSaving]    = useState(false)
   const [geocoding, setGeocoding] = useState(false)
   const [form,      setForm]      = useState(EMPTY_FORM)
+
+  // Import state
+  const [importing,    setImporting]    = useState(false)
+  const [importProgress, setImportProgress] = useState(null) // { current, total, done, failed }
+  const importInputRef = useRef(null)
 
   const setF = (k, v) => setForm(f => ({ ...f, [k]: v }))
 
@@ -166,6 +172,77 @@ export default function FamilyGroups() {
     }
   }
 
+  async function handleImport(e) {
+    const file = e.target.files?.[0]
+    if (!file) return
+    e.target.value = ''
+    setImporting(true)
+
+    let parsed
+    try {
+      parsed = await parseFamilyGroupsFromExcel(file)
+    } catch {
+      toastError('No se pudo leer el archivo. Verifica que sea el formato correcto.')
+      setImporting(false)
+      return
+    }
+
+    if (!parsed.length) {
+      toastError('El archivo no tiene grupos válidos.')
+      setImporting(false)
+      return
+    }
+
+    let done = 0, failed = 0
+    setImportProgress({ current: 0, total: parsed.length, done: 0, failed: 0 })
+
+    for (let i = 0; i < parsed.length; i++) {
+      const g = parsed[i]
+      setImportProgress({ current: i + 1, total: parsed.length, done, failed })
+
+      let coordinates = null
+      try {
+        coordinates = await geocodeAddress(g.street, g.neighborhood, g.city)
+      } catch {}
+
+      const fullAddress = [g.street, g.neighborhood, g.city].filter(Boolean).join(', ')
+
+      try {
+        await addDoc(collection(db, 'familyGroups'), {
+          name:         g.name,
+          zone:         g.zone,
+          city:         g.city,
+          neighborhood: g.neighborhood,
+          street:       g.street,
+          address:      fullAddress,
+          coordinates,  // null si no se pudo geocodificar
+          leaders:      g.leaders,
+          active:       true,
+          createdAt:    serverTimestamp(),
+        })
+        done++
+      } catch {
+        failed++
+      }
+
+      // Respetar el límite de 1 req/seg de Nominatim
+      if (i < parsed.length - 1) await new Promise(r => setTimeout(r, 1100))
+    }
+
+    setImportProgress({ current: parsed.length, total: parsed.length, done, failed })
+    await loadGroups()
+
+    setTimeout(() => {
+      setImporting(false)
+      setImportProgress(null)
+      if (failed === 0) {
+        ok(`${done} grupo${done !== 1 ? 's' : ''} importado${done !== 1 ? 's' : ''} correctamente.`)
+      } else {
+        ok(`${done} importados. ${failed} fallaron — agrégalos manualmente.`)
+      }
+    }, 1200)
+  }
+
   return (
     <div className="flex flex-col" style={{ background: 'var(--bg)', minHeight: '100%' }}>
 
@@ -192,14 +269,40 @@ export default function FamilyGroups() {
             Grupos Familiares
           </h1>
         </div>
-        <button
-          onClick={openAdd}
-          className="h-9 px-4 flex items-center gap-1.5 rounded-[10px] text-sm font-bold press"
-          style={{ background: 'var(--accent-g)', color: 'white' }}
-        >
-          <Plus size={16} weight="bold" /> Nuevo
-        </button>
+        <div className="flex items-center gap-2">
+          <button
+            onClick={generateFamilyGroupsTemplate}
+            title="Descargar plantilla Excel"
+            className="w-9 h-9 flex items-center justify-center rounded-[10px] press"
+            style={{ background: 'var(--card)', border: '1px solid var(--border)', color: 'var(--text-2)' }}
+          >
+            <DownloadSimple size={18} />
+          </button>
+          <button
+            onClick={() => importInputRef.current?.click()}
+            title="Importar desde Excel"
+            className="w-9 h-9 flex items-center justify-center rounded-[10px] press"
+            style={{ background: 'var(--card)', border: '1px solid var(--border)', color: 'var(--text-2)' }}
+          >
+            <FileArrowUp size={18} />
+          </button>
+          <button
+            onClick={openAdd}
+            className="h-9 px-4 flex items-center gap-1.5 rounded-[10px] text-sm font-bold press"
+            style={{ background: 'var(--accent-g)', color: 'white' }}
+          >
+            <Plus size={16} weight="bold" /> Nuevo
+          </button>
+        </div>
       </div>
+
+      <input
+        ref={importInputRef}
+        type="file"
+        accept=".xlsx,.xls"
+        onChange={handleImport}
+        style={{ display: 'none' }}
+      />
 
       <div className="px-4 py-4">
         {loading ? (
@@ -214,6 +317,45 @@ export default function FamilyGroups() {
           groups.map(g => <GroupRow key={g.id} group={g} onEdit={() => openEdit(g)} />)
         )}
       </div>
+
+      {/* Progress overlay during import */}
+      {importing && importProgress && (
+        <div
+          className="fixed inset-0 z-[100] flex items-center justify-center px-6"
+          style={{ background: 'rgba(0,0,0,0.75)', backdropFilter: 'blur(6px)' }}
+        >
+          <div
+            className="w-full max-w-sm rounded-[22px] p-6 animate-scale-in"
+            style={{ background: 'var(--surface)', border: '1px solid var(--border)', boxShadow: 'var(--shadow)' }}
+          >
+            <h2 className="font-syne font-extrabold text-[18px] mb-1" style={{ color: 'var(--text)' }}>
+              Importando grupos
+            </h2>
+            <p className="text-sm mb-5" style={{ color: 'var(--text-2)' }}>
+              Geocodificando {importProgress.current} de {importProgress.total}...
+            </p>
+            <div className="w-full h-2 rounded-full overflow-hidden mb-4" style={{ background: 'var(--card)' }}>
+              <div
+                className="h-full rounded-full transition-all duration-500"
+                style={{
+                  width: `${Math.round((importProgress.current / importProgress.total) * 100)}%`,
+                  background: 'var(--accent-g)',
+                }}
+              />
+            </div>
+            <div className="flex gap-3">
+              <div className="flex-1 rounded-[12px] p-3 text-center" style={{ background: 'var(--card)' }}>
+                <p className="text-[10px] font-bold uppercase tracking-widest mb-1" style={{ color: 'var(--green)' }}>OK</p>
+                <p className="text-2xl font-extrabold" style={{ color: 'var(--text)' }}>{importProgress.done}</p>
+              </div>
+              <div className="flex-1 rounded-[12px] p-3 text-center" style={{ background: 'var(--card)' }}>
+                <p className="text-[10px] font-bold uppercase tracking-widest mb-1" style={{ color: 'var(--red)' }}>Fallidos</p>
+                <p className="text-2xl font-extrabold" style={{ color: 'var(--text)' }}>{importProgress.failed}</p>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Modal */}
       <Modal

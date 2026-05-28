@@ -9,7 +9,7 @@ import {
   DownloadSimple, ChartBar, Users, Trophy, Star, ListBullets, HandHeart, CaretDown, CaretUp, ArrowClockwise
 } from '@phosphor-icons/react'
 import {
-  exportRankingReport, exportMembersList, exportMeetingAttendeesList, exportInvitationRanking, exportAgeRangeList, exportMonthlyAttendance
+  exportRankingReport, exportMembersList, exportInvitationRanking, exportAgeRangeList, exportAttendanceRange
 } from '../utils/excel'
 import { getAgeRange } from '../utils/members'
 import { localDateStr, todayStr, formatDateShort } from '../utils/dates'
@@ -31,25 +31,23 @@ export default function Reports() {
   const [dateTo,    setDateTo]    = usePersistedState('rep_to',   todayStr())
   const [activeTab, setActiveTab] = usePersistedState('rep_tab', 'summary')
   const [expandedInviters,  setExpandedInviters]  = useState(new Set())
-  const [expandedMeetings, setExpandedMeetings] = useState(new Set())
+  const [expandedMeetings,  setExpandedMeetings]  = useState(new Set())
 
   // Listas tab state
-  const [listGroup,      setListGroup]      = usePersistedState('rep_list_group', '')
-  const [listMeeting,    setListMeeting]    = useState('')
-  const [ageRangeGroup,  setAgeRangeGroup]  = usePersistedState('rep_age_group', '')
+  const [listGroup,     setListGroup]     = usePersistedState('rep_list_group', '')
+  const [ageRangeGroup, setAgeRangeGroup] = usePersistedState('rep_age_group', '')
 
-  // Mensual tab state
-  const [mensualGroup, setMensualGroup] = usePersistedState('rep_mensual_group', '')
-  const [mensualMonth, setMensualMonth] = usePersistedState('rep_mensual_month', todayStr().slice(0, 7))
+  // Asistentes tab state
+  const [asistGroup,    setAsistGroup]    = usePersistedState('rep_asist_group', '')
+  const [asistDateFrom, setAsistDateFrom] = usePersistedState('rep_asist_from', localDateStr(new Date(Date.now() - 30 * 24 * 60 * 60 * 1000)))
+  const [asistDateTo,   setAsistDateTo]   = usePersistedState('rep_asist_to',   todayStr())
 
   useEffect(() => { loadData() }, [])
 
-  // Auto-seleccionar grupo para líderes en tab mensual
+  // Auto-seleccionar grupo para líderes
   useEffect(() => {
-    if (isLeader && !mensualGroup && groups.length > 0) {
-      setMensualGroup(groups[0].id)
-    }
-  }, [groups, isLeader, mensualGroup])
+    if (isLeader && !asistGroup && groups.length > 0) setAsistGroup(groups[0].id)
+  }, [groups, isLeader, asistGroup])
 
   async function loadData() {
     setLoading(true)
@@ -66,15 +64,13 @@ export default function Reports() {
       setRecords(recs)
       setMembers(mSnap.docs.map(d => ({ id: d.id, ...d.data() })))
       const allGroups = gSnap.docs.map(d => ({ id: d.id, ...d.data() }))
-      // Leaders only see their assigned groups
       const visibleGroups = (profile?.role === 'leader' || profile?.role === 'assistant')
         ? allGroups.filter(g => (profile.groupIds || []).includes(g.id))
         : allGroups
       setGroups(visibleGroups)
-      // Reset stale persisted group filters that no longer belong to visible groups
-      if (mensualGroup  && !visibleGroups.some(g => g.id === mensualGroup))  setMensualGroup('')
       if (listGroup     && !visibleGroups.some(g => g.id === listGroup))     setListGroup('')
       if (ageRangeGroup && !visibleGroups.some(g => g.id === ageRangeGroup)) setAgeRangeGroup('')
+      if (asistGroup    && !visibleGroups.some(g => g.id === asistGroup))    setAsistGroup('')
     } catch (e) { console.error(e) }
     finally { setLoading(false) }
   }
@@ -97,26 +93,19 @@ export default function Reports() {
     return members.filter(m => m.active !== false)
   }, [members, selGroup, isLeader, profile])
 
-  // Ranking report data
   const ranking = useMemo(() => {
+    const totalMeetings = filteredRecords.length
     return filteredMembers.map(m => {
-      let present = 0, total = 0
+      let present = 0
       filteredRecords.forEach(r => {
-        // Use group-specific join date if available, else fallback to general joinDate
-        const effectiveJoinDate = r.groupId && m.groupJoinDates?.[r.groupId]
-          ? m.groupJoinDates[r.groupId]
-          : m.joinDate
-        if (effectiveJoinDate && r.date < effectiveJoinDate) return
-        total++
         const st = r.records?.[m.id]
         if (st === 'present' || st === 'late') present++
       })
-      const pct = total > 0 ? Math.round((present / total) * 100) : 0
-      return { id: m.id, name: m.fullName, total, present, pct }
-    }).sort((a, b) => b.pct - a.pct)
+      const pct = totalMeetings > 0 ? Math.round((present / totalMeetings) * 100) : 0
+      return { id: m.id, name: m.fullName, total: totalMeetings, present, pct }
+    }).sort((a, b) => b.pct - a.pct || b.present - a.present)
   }, [filteredMembers, filteredRecords])
 
-  // Summary
   const summary = useMemo(() => {
     if (!filteredRecords.length) return null
     const last = filteredRecords[0]
@@ -124,7 +113,6 @@ export default function Reports() {
     return { date: last.date, total, present, pct }
   }, [filteredRecords, members])
 
-  // New members who attended in the filtered records
   const newAttendees = useMemo(() => {
     const attendedIds = new Set()
     filteredRecords.forEach(r => {
@@ -138,7 +126,6 @@ export default function Reports() {
       .filter(m => m.spiritualStatus === 'new' && attendedIds.has(m.id))
       .map(m => {
         const memberGroupIds = m.groupIds?.length > 0 ? m.groupIds : (m.groupId ? [m.groupId] : [])
-        // Determine the most relevant group for this member in the current context
         const contextGroupId = selGroup ||
           (leaderGroupIds ? leaderGroupIds.find(gid => memberGroupIds.includes(gid)) : null)
         return {
@@ -151,7 +138,6 @@ export default function Reports() {
       .sort((a, b) => b._attendCount - a._attendCount)
   }, [filteredRecords, filteredMembers, groups, selGroup, isLeader, profile])
 
-  // New members per meeting date: those whose join date for that group matches the meeting date
   const newByMeeting = useMemo(() => {
     return filteredRecords
       .map(r => ({
@@ -159,7 +145,6 @@ export default function Reports() {
         date: r.date,
         members: filteredMembers.filter(m => {
           if (m.spiritualStatus !== 'new') return false
-          // Use group-specific join date if available, else fallback to general joinDate
           const effectiveJoinDate = r.groupId && m.groupJoinDates?.[r.groupId]
             ? m.groupJoinDates[r.groupId]
             : m.joinDate
@@ -169,7 +154,6 @@ export default function Reports() {
       .filter(r => r.members.length > 0)
   }, [filteredRecords, filteredMembers])
 
-  // Invitation ranking
   const invitationRanking = useMemo(() => {
     const counts = {}
     filteredMembers.forEach(m => {
@@ -192,7 +176,6 @@ export default function Reports() {
       .sort((a, b) => b.count - a.count)
   }, [filteredMembers, members, dateFrom, dateTo])
 
-  // Data for the Listas tab
   const listGroupMembers = useMemo(() => {
     const leaderGroupIds = isLeader ? (profile?.groupIds || []) : null
     const mems = listGroup
@@ -219,58 +202,42 @@ export default function Reports() {
     return mems.map(m => ({ ...m, _groupName: grpMap[m.groupId] || '' }))
   }, [members, groups, ageRangeGroup, isLeader, profile])
 
-  const selectedMeetingRecord = useMemo(() => {
-    if (!listMeeting) return null
-    return records.find(r => r.id === listMeeting) || null
-  }, [records, listMeeting])
-
-  const selectedMeetingMembers = useMemo(() => {
-    if (!selectedMeetingRecord) return []
-    return selectedMeetingRecord.groupId
-      ? members.filter(m => m.active !== false && memberInGroup(m, selectedMeetingRecord.groupId))
-      : members.filter(m => m.active !== false)
-  }, [selectedMeetingRecord, members])
-
-  const mensualMeetings = useMemo(() => {
-    if (!mensualGroup || !mensualMonth) return []
+  // Asistentes tab data
+  const asistMeetings = useMemo(() => {
+    if (!asistGroup) return []
     const leaderGroupIds = isLeader ? (profile?.groupIds || []) : null
-    if (leaderGroupIds && !leaderGroupIds.includes(mensualGroup)) return []
+    if (leaderGroupIds && !leaderGroupIds.includes(asistGroup)) return []
     return records
-      .filter(r => r.groupId === mensualGroup && (r.date || '').startsWith(mensualMonth))
+      .filter(r =>
+        r.groupId === asistGroup &&
+        (!asistDateFrom || r.date >= asistDateFrom) &&
+        (!asistDateTo   || r.date <= asistDateTo)
+      )
       .sort((a, b) => (a.date || '').localeCompare(b.date || ''))
-  }, [records, mensualGroup, mensualMonth, isLeader, profile])
+  }, [records, asistGroup, asistDateFrom, asistDateTo, isLeader, profile])
 
-  const mensualMembers = useMemo(() => {
-    if (!mensualGroup) return []
+  const asistMembers = useMemo(() => {
+    if (!asistGroup) return []
     return members
-      .filter(m => m.active !== false && memberInGroup(m, mensualGroup))
+      .filter(m => m.active !== false && memberInGroup(m, asistGroup))
       .sort((a, b) => (a.fullName || '').localeCompare(b.fullName || '', 'es'))
-  }, [members, mensualGroup])
+  }, [members, asistGroup])
 
   const groupName = groups.find(g => g.id === selGroup)?.name || 'Todos'
   const tabs = [
-    { id: 'summary',      label: 'Resumen' },
-    { id: 'ranking',      label: 'Ranking' },
-    { id: 'nuevos',       label: 'Nuevos' },
-    { id: 'invitadores',  label: 'Invitadores' },
-    { id: 'listas',       label: 'Listas' },
-    { id: 'mensual',      label: 'Mensual' },
+    { id: 'summary',     label: 'Resumen' },
+    { id: 'ranking',     label: 'Ranking' },
+    { id: 'nuevos',      label: 'Nuevos' },
+    { id: 'invitadores', label: 'Invitadores' },
+    { id: 'listas',      label: 'Listas' },
+    { id: 'asistentes',  label: 'Asistentes' },
   ]
 
   function toggleInviter(id) {
-    setExpandedInviters(prev => {
-      const next = new Set(prev)
-      next.has(id) ? next.delete(id) : next.add(id)
-      return next
-    })
+    setExpandedInviters(prev => { const n = new Set(prev); n.has(id) ? n.delete(id) : n.add(id); return n })
   }
-
   function toggleMeeting(id) {
-    setExpandedMeetings(prev => {
-      const next = new Set(prev)
-      next.has(id) ? next.delete(id) : next.add(id)
-      return next
-    })
+    setExpandedMeetings(prev => { const n = new Set(prev); n.has(id) ? n.delete(id) : n.add(id); return n })
   }
 
   return (
@@ -284,8 +251,8 @@ export default function Reports() {
         </button>
       </div>
 
-      {/* Filters (for non-listas, non-mensual tabs) */}
-      {activeTab !== 'listas' && activeTab !== 'mensual' && (
+      {/* Filters (for non-listas, non-asistentes tabs) */}
+      {activeTab !== 'listas' && activeTab !== 'asistentes' && (
         <div className="px-4 py-3 flex flex-col gap-2" style={{ borderBottom: '1px solid var(--border)' }}>
           <select value={selGroup} onChange={e => !isLeader && setSelGroup(e.target.value)}
             disabled={isLeader}
@@ -342,11 +309,9 @@ export default function Reports() {
                         ))}
                       </div>
                     </div>
-
                     <p className="text-[11px] font-bold uppercase tracking-widest" style={{ color: 'var(--text-2)' }}>
                       Período: {filteredRecords.length} reuniones
                     </p>
-
                     {filteredRecords.slice(0, 10).map(r => {
                       const { total, present, pct } = meetingStats(r, members)
                       const color = pct >= 70 ? 'var(--green)' : pct >= 40 ? 'var(--amber)' : 'var(--red)'
@@ -362,7 +327,6 @@ export default function Reports() {
                         </div>
                       )
                     })}
-
                   </>
                 ) : (
                   <EmptyState icon={ChartBar} title="Sin datos" description="No hay registros en el período seleccionado." />
@@ -384,15 +348,28 @@ export default function Reports() {
                       <DownloadSimple size={18} /> Exportar Ranking
                     </button>
                     {ranking.map((r, i) => {
-                      const medal = i === 0 ? '🥇' : i === 1 ? '🥈' : i === 2 ? '🥉' : `${i + 1}.`
-                      const color = r.pct >= 70 ? 'var(--green)' : r.pct >= 40 ? 'var(--amber)' : 'var(--red)'
+                      const medal  = i === 0 ? '🥇' : i === 1 ? '🥈' : i === 2 ? '🥉' : `${i + 1}.`
+                      const color  = r.pct >= 70 ? 'var(--green)' : r.pct >= 40 ? 'var(--amber)' : 'var(--red)'
+                      const member = filteredMembers.find(m => m.id === r.id)
                       return (
                         <div key={r.id} className="flex items-center gap-3 px-4 py-3 rounded-[12px]"
                           style={{ background: 'var(--surface)', border: '1px solid var(--border)' }}>
                           <span className="text-sm font-bold w-6 text-center flex-shrink-0" style={{ color: 'var(--text-3)' }}>{medal}</span>
                           <div className="flex-1 min-w-0">
                             <p className="text-sm font-bold truncate" style={{ color: 'var(--text)' }}>{r.name}</p>
-                            <p className="text-xs" style={{ color: 'var(--text-2)' }}>{r.present} asist. de {r.total} reuniones</p>
+                            <div className="flex items-center gap-1.5 mt-0.5 flex-wrap">
+                              <span className="text-xs" style={{ color: 'var(--text-2)' }}>{r.present} asist. de {r.total} reuniones</span>
+                              {member?.redRole && (
+                                <span className="text-[9px] font-bold px-1.5 py-0.5 rounded-[4px]"
+                                  style={{
+                                    background: member.redRole === 'leader' ? 'rgba(167,139,250,0.12)' : 'rgba(59,130,246,0.1)',
+                                    color: member.redRole === 'leader' ? '#a78bfa' : 'var(--accent)',
+                                    border: `1px solid ${member.redRole === 'leader' ? 'rgba(167,139,250,0.3)' : 'rgba(59,130,246,0.2)'}`,
+                                  }}>
+                                  {member.redRole === 'leader' ? 'Líder' : 'Apoyo'} {member.redRangeName}
+                                </span>
+                              )}
+                            </div>
                           </div>
                           <span className="font-syne font-extrabold text-xl flex-shrink-0" style={{ color }}>{r.pct}%</span>
                         </div>
@@ -412,7 +389,7 @@ export default function Reports() {
                 {newAttendees.length === 0 ? (
                   <EmptyState icon={Star} title="Sin nuevos" description="No hay personas nuevas con asistencia en este período." />
                 ) : (
-                  <> 
+                  <>
                     <div className="grid grid-cols-2 gap-3">
                       <div className="flex flex-col items-center gap-1 p-3 rounded-[12px]"
                         style={{ background: 'var(--surface)', border: '1px solid var(--border)' }}>
@@ -425,7 +402,6 @@ export default function Reports() {
                         <span className="text-[10px] font-bold uppercase tracking-wide text-center" style={{ color: 'var(--text-2)' }}>Reuniones</span>
                       </div>
                     </div>
-
                     <button
                       onClick={() => exportMembersList(newAttendees, `Nuevos_${groupName}`, ageRanges)}
                       className="h-12 rounded-[12px] font-bold text-sm flex items-center justify-center gap-2 press"
@@ -451,9 +427,7 @@ export default function Reports() {
                                   <span className="font-syne font-extrabold text-xl" style={{ color: 'var(--amber)' }}>
                                     {r.members.length} nuevo{r.members.length !== 1 ? 's' : ''}
                                   </span>
-                                  {expanded
-                                    ? <CaretUp size={14} style={{ color: 'var(--text-3)' }} />
-                                    : <CaretDown size={14} style={{ color: 'var(--text-3)' }} />}
+                                  {expanded ? <CaretUp size={14} style={{ color: 'var(--text-3)' }} /> : <CaretDown size={14} style={{ color: 'var(--text-3)' }} />}
                                 </div>
                               </button>
                               {expanded && (
@@ -474,7 +448,6 @@ export default function Reports() {
                             </div>
                           )
                         })}
-                        
                         <div style={{ height: 1, background: 'var(--border)', marginTop: 4, marginBottom: 4 }} />
                         <p className="text-[11px] font-bold uppercase tracking-widest" style={{ color: 'var(--text-2)' }}>
                           Lista de nuevos
@@ -515,53 +488,40 @@ export default function Reports() {
                   Personas que han traído más invitados al grupo en el período seleccionado.
                   Solo cuenta miembros con <strong style={{ color: 'var(--accent)' }}>invitador asignado</strong> y fecha de ingreso dentro del rango.
                 </p>
-
                 {invitationRanking.length === 0 ? (
                   <EmptyState icon={HandHeart} title="Sin datos"
                     description="No hay invitaciones registradas en este período. Asigna el campo «Invitado por» al editar un miembro." />
                 ) : (
                   <>
-                    {/* Totales */}
                     <div className="grid grid-cols-2 gap-3">
                       <div className="flex flex-col items-center gap-1 p-3 rounded-[12px]"
                         style={{ background: 'var(--surface)', border: '1px solid var(--border)' }}>
-                        <span className="font-syne font-extrabold text-2xl" style={{ color: 'var(--accent)' }}>
-                          {invitationRanking.length}
-                        </span>
-                        <span className="text-[10px] font-bold uppercase tracking-wide text-center" style={{ color: 'var(--text-2)' }}>
-                          Invitadores
-                        </span>
+                        <span className="font-syne font-extrabold text-2xl" style={{ color: 'var(--accent)' }}>{invitationRanking.length}</span>
+                        <span className="text-[10px] font-bold uppercase tracking-wide text-center" style={{ color: 'var(--text-2)' }}>Invitadores</span>
                       </div>
                       <div className="flex flex-col items-center gap-1 p-3 rounded-[12px]"
                         style={{ background: 'var(--surface)', border: '1px solid var(--border)' }}>
                         <span className="font-syne font-extrabold text-2xl" style={{ color: 'var(--green)' }}>
                           {invitationRanking.reduce((s, r) => s + r.count, 0)}
                         </span>
-                        <span className="text-[10px] font-bold uppercase tracking-wide text-center" style={{ color: 'var(--text-2)' }}>
-                          Total invitados
-                        </span>
+                        <span className="text-[10px] font-bold uppercase tracking-wide text-center" style={{ color: 'var(--text-2)' }}>Total invitados</span>
                       </div>
                     </div>
-
                     <button
                       onClick={() => exportInvitationRanking(invitationRanking, groupName)}
                       className="h-12 rounded-[12px] font-bold text-sm flex items-center justify-center gap-2 press"
                       style={{ background: 'rgba(59,130,246,0.12)', color: 'var(--accent)', border: '1px solid rgba(59,130,246,0.25)' }}>
                       <DownloadSimple size={18} /> Exportar ranking de invitaciones
                     </button>
-
-                    {/* Lista */}
                     {invitationRanking.map((r, i) => {
                       const medal    = i === 0 ? '🥇' : i === 1 ? '🥈' : i === 2 ? '🥉' : `${i + 1}.`
                       const expanded = expandedInviters.has(r.id)
                       return (
                         <div key={r.id} className="rounded-[12px] overflow-hidden"
                           style={{ background: 'var(--surface)', border: '1px solid var(--border)' }}>
-                          {/* Fila principal */}
                           <button type="button" onClick={() => toggleInviter(r.id)}
                             className="w-full flex items-center gap-3 px-4 py-3 press text-left">
-                            <span className="text-sm font-bold w-6 text-center flex-shrink-0"
-                              style={{ color: 'var(--text-3)' }}>{medal}</span>
+                            <span className="text-sm font-bold w-6 text-center flex-shrink-0" style={{ color: 'var(--text-3)' }}>{medal}</span>
                             <div className="flex-1 min-w-0">
                               <p className="text-sm font-bold truncate" style={{ color: 'var(--text)' }}>{r.name?.toUpperCase()}</p>
                               <p className="text-xs" style={{ color: 'var(--text-2)' }}>
@@ -569,31 +529,18 @@ export default function Reports() {
                               </p>
                             </div>
                             <div className="flex items-center gap-2 flex-shrink-0">
-                              <span className="font-syne font-extrabold text-xl" style={{ color: 'var(--accent)' }}>
-                                {r.count}
-                              </span>
-                              {expanded
-                                ? <CaretUp size={14} style={{ color: 'var(--text-3)' }} />
-                                : <CaretDown size={14} style={{ color: 'var(--text-3)' }} />}
+                              <span className="font-syne font-extrabold text-xl" style={{ color: 'var(--accent)' }}>{r.count}</span>
+                              {expanded ? <CaretUp size={14} style={{ color: 'var(--text-3)' }} /> : <CaretDown size={14} style={{ color: 'var(--text-3)' }} />}
                             </div>
                           </button>
-
-                          {/* Lista expandida de invitados */}
                           {expanded && (
                             <div style={{ borderTop: '1px solid var(--border)' }}>
                               {r.invited.map((m, mi) => (
-                                <div key={m.id}
-                                  className="flex items-center gap-3 px-4 py-2.5"
-                                  style={{
-                                    borderTop: mi > 0 ? '1px solid var(--border)' : 'none',
-                                    background: 'var(--card)',
-                                  }}>
-                                  <div className="w-1.5 h-1.5 rounded-full flex-shrink-0"
-                                    style={{ background: 'var(--accent)' }} />
+                                <div key={m.id} className="flex items-center gap-3 px-4 py-2.5"
+                                  style={{ borderTop: mi > 0 ? '1px solid var(--border)' : 'none', background: 'var(--card)' }}>
+                                  <div className="w-1.5 h-1.5 rounded-full flex-shrink-0" style={{ background: 'var(--accent)' }} />
                                   <span className="flex-1 text-sm" style={{ color: 'var(--text)' }}>{m.fullName?.toUpperCase()}</span>
-                                  {m.joinDate && (
-                                    <span className="text-xs" style={{ color: 'var(--text-3)' }}>{m.joinDate}</span>
-                                  )}
+                                  {m.joinDate && <span className="text-xs" style={{ color: 'var(--text-3)' }}>{m.joinDate}</span>}
                                 </div>
                               ))}
                             </div>
@@ -601,8 +548,6 @@ export default function Reports() {
                         </div>
                       )
                     })}
-
-                    
                   </>
                 )}
               </div>
@@ -612,35 +557,31 @@ export default function Reports() {
             {activeTab === 'listas' && (
               <div className="flex flex-col gap-5">
                 {/* Section 1: All members — hidden for leaders */}
-                {!isLeader && <div className="flex flex-col gap-3 p-4 rounded-[14px]"
-                  style={{ background: 'var(--surface)', border: '1px solid var(--border)' }}>
-                  <div className="flex items-center gap-2">
-                    <Users size={16} style={{ color: 'var(--accent)', flexShrink: 0 }} />
-                    <p className="text-sm font-bold" style={{ color: 'var(--text)' }}>Lista completa de personas</p>
+                {!isLeader && (
+                  <div className="flex flex-col gap-3 p-4 rounded-[14px]"
+                    style={{ background: 'var(--surface)', border: '1px solid var(--border)' }}>
+                    <div className="flex items-center gap-2">
+                      <Users size={16} style={{ color: 'var(--accent)', flexShrink: 0 }} />
+                      <p className="text-sm font-bold" style={{ color: 'var(--text)' }}>Lista completa de personas</p>
+                    </div>
+                    <p className="text-xs" style={{ color: 'var(--text-2)' }}>
+                      Exporta la lista de todos los miembros registrados con sus datos completos.
+                    </p>
+                    <div className="flex items-center gap-1.5 text-xs font-semibold" style={{ color: 'var(--green)' }}>
+                      <span>{members.filter(m => m.active !== false).length} personas activas</span>
+                    </div>
+                    <button
+                      onClick={() => exportMembersList(
+                        members.filter(m => m.active !== false).map(m => ({ ...m, _groupName: groups.find(g => g.id === m.groupId)?.name || '' })),
+                        'Todos', ageRanges,
+                        members.filter(m => m.active === false).map(m => ({ ...m, _groupName: groups.find(g => g.id === m.groupId)?.name || '' }))
+                      )}
+                      className="h-11 rounded-[10px] font-bold text-sm flex items-center justify-center gap-2 press"
+                      style={{ background: 'rgba(59,130,246,0.12)', color: 'var(--accent)', border: '1px solid rgba(59,130,246,0.25)' }}>
+                      <DownloadSimple size={16} /> Exportar todas las personas
+                    </button>
                   </div>
-                  <p className="text-xs" style={{ color: 'var(--text-2)' }}>
-                    Exporta la lista de todos los miembros registrados con sus datos completos.
-                  </p>
-                  <div className="flex items-center gap-1.5 text-xs font-semibold" style={{ color: 'var(--green)' }}>
-                    <span>{members.filter(m => m.active !== false).length} personas activas</span>
-                  </div>
-                  <button
-                    onClick={() => exportMembersList(
-                      members.filter(m => m.active !== false).map(m => ({
-                        ...m,
-                        _groupName: groups.find(g => g.id === m.groupId)?.name || ''
-                      })),
-                      'Todos', ageRanges,
-                      members.filter(m => m.active === false).map(m => ({
-                        ...m,
-                        _groupName: groups.find(g => g.id === m.groupId)?.name || ''
-                      }))
-                    )}
-                    className="h-11 rounded-[10px] font-bold text-sm flex items-center justify-center gap-2 press"
-                    style={{ background: 'rgba(59,130,246,0.12)', color: 'var(--accent)', border: '1px solid rgba(59,130,246,0.25)' }}>
-                    <DownloadSimple size={16} /> Exportar todas las personas
-                  </button>
-                </div>}
+                )}
 
                 {/* Section 2: Members by group */}
                 <div className="flex flex-col gap-3 p-4 rounded-[14px]"
@@ -703,10 +644,13 @@ export default function Reports() {
                       {!isLeader && <option value="">Todos los grupos</option>}
                       {groups.map(g => <option key={g.id} value={g.id}>{g.name}</option>)}
                     </select>
-                    {/* Breakdown */}
                     <div className="flex flex-col gap-1.5">
                       {ageRanges.map(r => {
-                        const count = ageRangeMembers.filter(m => getAgeRange(m.birthDate, ageRanges)?.name === r.name).length
+                        const count = ageRangeMembers.filter(m =>
+                          m.redRangeName
+                            ? m.redRangeName === r.name
+                            : getAgeRange(m.birthDate, ageRanges)?.name === r.name
+                        ).length
                         return (
                           <div key={r.name} className="flex items-center gap-2 px-3 py-2 rounded-[9px]"
                             style={{ background: 'var(--card)', border: '1px solid var(--border)' }}>
@@ -717,7 +661,7 @@ export default function Reports() {
                         )
                       })}
                       {(() => {
-                        const unclassified = ageRangeMembers.filter(m => !getAgeRange(m.birthDate, ageRanges)).length
+                        const unclassified = ageRangeMembers.filter(m => !m.redRangeName && !getAgeRange(m.birthDate, ageRanges)).length
                         return unclassified > 0 ? (
                           <div className="flex items-center gap-2 px-3 py-2 rounded-[9px]"
                             style={{ background: 'var(--card)', border: '1px solid var(--border)' }}>
@@ -738,77 +682,26 @@ export default function Reports() {
                         background: 'rgba(139,92,246,0.12)',
                         color: '#8b5cf6',
                         border: '1px solid rgba(139,92,246,0.25)',
-                        opacity: listGroupMembers.length === 0 ? 0.5 : 1,
+                        opacity: ageRangeMembers.length === 0 ? 0.5 : 1,
                       }}>
                       <DownloadSimple size={16} /> Exportar clasificación por edades
                     </button>
                   </div>
                 )}
-
-                {/* Section 4: Attendees of a specific meeting */}
-                <div className="flex flex-col gap-3 p-4 rounded-[14px]"
-                  style={{ background: 'var(--surface)', border: '1px solid var(--border)' }}>
-                  <div className="flex items-center gap-2">
-                    <ChartBar size={16} style={{ color: 'var(--green)', flexShrink: 0 }} />
-                    <p className="text-sm font-bold" style={{ color: 'var(--text)' }}>Asistentes por reunión</p>
-                  </div>
-                  <p className="text-xs" style={{ color: 'var(--text-2)' }}>
-                    Selecciona una reunión para exportar quién asistió o estuvo ausente.
-                  </p>
-                  <select value={listMeeting} onChange={e => setListMeeting(e.target.value)}
-                    className="w-full rounded-[10px] px-3 py-2.5 text-sm font-medium outline-none"
-                    style={{ background: 'var(--card)', border: '1px solid var(--border)', color: 'var(--text)', fontFamily: 'inherit' }}>
-                    <option value="">Selecciona una reunión</option>
-                    {records
-                      .filter(r => !isLeader || (profile?.groupIds || []).includes(r.groupId))
-                      .map(r => {
-                        const grp = groups.find(g => g.id === r.groupId)
-                        const lbl = `${formatDateShort(r.date)}${grp ? ` — ${grp.name}` : ''}`
-                        return <option key={r.id} value={r.id}>{lbl}</option>
-                      })}
-                  </select>
-                  {selectedMeetingRecord && (() => {
-                    const activeIds = new Set(selectedMeetingMembers.map(m => m.id))
-                    const recs = selectedMeetingRecord.records || {}
-                    const pres = Object.entries(recs).filter(([id, v]) => activeIds.has(id) && (v === 'present' || v === 'late')).length
-                    const ause = Object.entries(recs).filter(([id, v]) => activeIds.has(id) && v === 'absent').length
-                    return (
-                      <div className="text-xs" style={{ color: 'var(--text-2)' }}>
-                        {pres} presentes · {ause} ausentes
-                      </div>
-                    )
-                  })()}
-                  <button
-                    disabled={!listMeeting}
-                    onClick={() => {
-                      if (!selectedMeetingRecord) return
-                      const grp    = groups.find(g => g.id === selectedMeetingRecord.groupId)
-                      const grpMap = Object.fromEntries(groups.map(g => [g.id, g.name]))
-                      const allWithGroup = members.filter(m => m.active !== false).map(m => ({ ...m, _groupName: grpMap[m.groupId] || '' }))
-                      exportMeetingAttendeesList(selectedMeetingRecord, selectedMeetingMembers, allWithGroup, grp?.name || '')
-                    }}
-                    className="h-11 rounded-[10px] font-bold text-sm flex items-center justify-center gap-2 press"
-                    style={{
-                      background: listMeeting ? 'rgba(34,197,94,0.12)' : 'var(--card)',
-                      color: listMeeting ? 'var(--green)' : 'var(--text-3)',
-                      border: `1px solid ${listMeeting ? 'rgba(34,197,94,0.25)' : 'var(--border)'}`,
-                    }}>
-                    <DownloadSimple size={16} /> Exportar asistentes
-                  </button>
-                </div>
               </div>
             )}
-            {/* Mensual tab */}
-            {activeTab === 'mensual' && (
+
+            {/* Asistentes tab */}
+            {activeTab === 'asistentes' && (
               <div className="flex flex-col gap-4">
                 <p className="text-xs" style={{ color: 'var(--text-2)' }}>
-                  Lista completa del grupo con todas las reuniones del mes. Muestra quién asistió y quién no en cada reunión.
+                  Tabla de asistencia por rango de reuniones. Elige el grupo y el rango de fechas que quieres ver.
                 </p>
 
-                {/* Filtros propios */}
+                {/* Group selector */}
                 <select
-                  value={mensualGroup}
-                  onChange={e => setMensualGroup(e.target.value)}
+                  value={asistGroup}
+                  onChange={e => setAsistGroup(e.target.value)}
                   disabled={isLeader && (profile?.groupIds || []).length === 1}
                   className="w-full rounded-[10px] px-3 py-2.5 text-sm font-medium outline-none"
                   style={{ background: 'var(--surface)', border: '1px solid var(--border)', color: 'var(--text)', fontFamily: 'inherit' }}>
@@ -816,62 +709,61 @@ export default function Reports() {
                   {groups.map(g => <option key={g.id} value={g.id}>{g.name}</option>)}
                 </select>
 
-                <input
-                  type="month"
-                  value={mensualMonth}
-                  onChange={e => setMensualMonth(e.target.value)}
-                  className="w-full rounded-[10px] px-3 py-2.5 text-sm font-medium outline-none"
-                  style={{ background: 'var(--surface)', border: '1px solid var(--border)', color: 'var(--text)', fontFamily: 'inherit', colorScheme: 'dark' }}
-                />
+                {/* Date range */}
+                <div className="flex gap-2">
+                  <input type="date" value={asistDateFrom} onChange={e => setAsistDateFrom(e.target.value)}
+                    className="flex-1 rounded-[10px] px-3 py-2.5 text-sm font-medium outline-none"
+                    style={{ background: 'var(--surface)', border: '1px solid var(--border)', color: 'var(--text)', fontFamily: 'inherit', colorScheme: 'dark' }} />
+                  <input type="date" value={asistDateTo} onChange={e => setAsistDateTo(e.target.value)}
+                    className="flex-1 rounded-[10px] px-3 py-2.5 text-sm font-medium outline-none"
+                    style={{ background: 'var(--surface)', border: '1px solid var(--border)', color: 'var(--text)', fontFamily: 'inherit', colorScheme: 'dark' }} />
+                </div>
 
-                {!mensualGroup ? (
-                  <EmptyState icon={ChartBar} title="Selecciona un grupo" description="Elige el grupo para ver el reporte mensual." />
-                ) : mensualMeetings.length === 0 ? (
-                  <EmptyState icon={ChartBar} title="Sin reuniones" description="No hay reuniones registradas para este grupo en el mes seleccionado." />
+                {!asistGroup ? (
+                  <EmptyState icon={ChartBar} title="Selecciona un grupo" description="Elige el grupo para ver la tabla de asistencia." />
+                ) : asistMeetings.length === 0 ? (
+                  <EmptyState icon={ChartBar} title="Sin reuniones" description="No hay reuniones registradas para este grupo en el rango seleccionado." />
                 ) : (
                   <>
-                    {/* Stats rápidos */}
                     <div className="grid grid-cols-2 gap-3">
                       <div className="flex flex-col items-center gap-1 p-3 rounded-[12px]"
                         style={{ background: 'var(--surface)', border: '1px solid var(--border)' }}>
-                        <span className="font-syne font-extrabold text-2xl" style={{ color: 'var(--accent)' }}>{mensualMembers.length}</span>
+                        <span className="font-syne font-extrabold text-2xl" style={{ color: 'var(--accent)' }}>{asistMembers.length}</span>
                         <span className="text-[10px] font-bold uppercase tracking-wide text-center" style={{ color: 'var(--text-2)' }}>Miembros</span>
                       </div>
                       <div className="flex flex-col items-center gap-1 p-3 rounded-[12px]"
                         style={{ background: 'var(--surface)', border: '1px solid var(--border)' }}>
-                        <span className="font-syne font-extrabold text-2xl" style={{ color: 'var(--green)' }}>{mensualMeetings.length}</span>
+                        <span className="font-syne font-extrabold text-2xl" style={{ color: 'var(--green)' }}>{asistMeetings.length}</span>
                         <span className="text-[10px] font-bold uppercase tracking-wide text-center" style={{ color: 'var(--text-2)' }}>Reuniones</span>
                       </div>
                     </div>
 
-                    {/* Botón exportar */}
                     <button
                       onClick={() => {
-                        const grpName = groups.find(g => g.id === mensualGroup)?.name || mensualGroup
-                        exportMonthlyAttendance(mensualMembers, mensualMeetings, grpName, mensualMonth)
+                        const grpName = groups.find(g => g.id === asistGroup)?.name || asistGroup
+                        exportAttendanceRange(asistMembers, asistMeetings, grpName, asistDateFrom, asistDateTo)
                       }}
                       className="h-12 rounded-[12px] font-bold text-sm flex items-center justify-center gap-2 press"
                       style={{ background: 'rgba(59,130,246,0.12)', color: 'var(--accent)', border: '1px solid rgba(59,130,246,0.25)' }}>
-                      <DownloadSimple size={18} /> Exportar reporte mensual
+                      <DownloadSimple size={18} /> Exportar tabla de asistencia
                     </button>
 
-                    {/* Tabla scrollable */}
+                    {/* Table */}
                     <div style={{ overflowX: 'auto', borderRadius: 12, border: '1px solid var(--border)' }}>
                       <table style={{ borderCollapse: 'collapse', minWidth: '100%' }}>
                         <thead>
                           <tr>
-                            <th
-                              style={{
-                                position: 'sticky', left: 0, zIndex: 2,
-                                background: 'var(--surface)', color: 'var(--text)',
-                                padding: '10px 12px', textAlign: 'left',
-                                fontSize: 11, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.05em',
-                                borderBottom: '1px solid var(--border)', borderRight: '1px solid var(--border)',
-                                whiteSpace: 'nowrap', minWidth: 140,
-                              }}>
+                            <th style={{
+                              position: 'sticky', left: 0, zIndex: 2,
+                              background: 'var(--surface)', color: 'var(--text)',
+                              padding: '10px 12px', textAlign: 'left',
+                              fontSize: 11, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.05em',
+                              borderBottom: '1px solid var(--border)', borderRight: '1px solid var(--border)',
+                              whiteSpace: 'nowrap', minWidth: 140,
+                            }}>
                               Nombre
                             </th>
-                            {mensualMeetings.map(r => (
+                            {asistMeetings.map(r => (
                               <th key={r.id} style={{
                                 background: 'var(--surface)', color: 'var(--text-2)',
                                 padding: '10px 8px', textAlign: 'center',
@@ -885,7 +777,7 @@ export default function Reports() {
                           </tr>
                         </thead>
                         <tbody>
-                          {mensualMembers.map((m, mi) => (
+                          {asistMembers.map((m, mi) => (
                             <tr key={m.id} style={{ background: mi % 2 === 0 ? 'var(--surface)' : 'var(--card)' }}>
                               <td style={{
                                 position: 'sticky', left: 0, zIndex: 1,
@@ -896,7 +788,7 @@ export default function Reports() {
                               }}>
                                 {m.fullName}
                               </td>
-                              {mensualMeetings.map(r => {
+                              {asistMeetings.map(r => {
                                 const st = r.records?.[m.id]
                                 const attended = st === 'present' || st === 'late'
                                 return (
@@ -904,9 +796,7 @@ export default function Reports() {
                                     padding: '8px 8px', textAlign: 'center', fontSize: 12, fontWeight: 700,
                                     borderTop: '1px solid var(--border)', borderLeft: '1px solid var(--border)',
                                     color: attended ? 'var(--green)' : 'var(--red)',
-                                    background: attended
-                                      ? 'rgba(34,197,94,0.08)'
-                                      : 'rgba(239,68,68,0.06)',
+                                    background: attended ? 'rgba(34,197,94,0.08)' : 'rgba(239,68,68,0.06)',
                                   }}>
                                     {attended ? 'Sí' : 'No'}
                                   </td>
@@ -921,7 +811,6 @@ export default function Reports() {
                 )}
               </div>
             )}
-
           </>
         )}
       </div>

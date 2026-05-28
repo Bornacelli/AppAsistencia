@@ -153,7 +153,11 @@ export default function Members() {
       const matchStatus   = !filterStatus   || p.spiritualStatus === filterStatus
       const matchActive   = filterActive === '' || String(p.active) === filterActive
       const matchSex      = !filterSex      || p._data?.sex === filterSex
-      const matchAgeRange = !filterAgeRange || getAgeRange(p._data?.birthDate, ageRanges)?.name === filterAgeRange
+      const matchAgeRange = !filterAgeRange || (
+        p._data?.redRangeName
+          ? p._data.redRangeName === filterAgeRange
+          : getAgeRange(p._data?.birthDate, ageRanges)?.name === filterAgeRange
+      )
       return matchSearch && matchGroup && matchStatus && matchActive && matchSex && matchAgeRange
     })
   }, [people, search, filterGroup, filterStatus, filterActive, filterSex, filterAgeRange, ageRanges])
@@ -399,12 +403,27 @@ export default function Members() {
                         {p._data.sex === 'male' ? 'Masc' : 'Fem'}
                       </span>
                     )}
-                    {(() => { const r = getAgeRange(p._data?.birthDate, ageRanges); return r ? (
-                      <span className="text-[10px] font-bold px-1.5 py-0.5 rounded-[4px]"
-                        style={{ background: 'rgba(139,92,246,0.1)', color: '#8b5cf6', border: '1px solid rgba(139,92,246,0.2)' }}>
-                        {r.name}
-                      </span>
-                    ) : null })()}
+                    {(() => {
+                      if (p._data?.redRole) {
+                        const label = p._data.redRole === 'leader' ? 'Líder' : 'Apoyo'
+                        const color = p._data.redRole === 'leader' ? '#a78bfa' : 'var(--accent)'
+                        const bg    = p._data.redRole === 'leader' ? 'rgba(167,139,250,0.12)' : 'rgba(59,130,246,0.1)'
+                        const bdr   = p._data.redRole === 'leader' ? 'rgba(167,139,250,0.3)' : 'rgba(59,130,246,0.25)'
+                        return (
+                          <span className="text-[10px] font-bold px-1.5 py-0.5 rounded-[4px]"
+                            style={{ background: bg, color, border: `1px solid ${bdr}` }}>
+                            {label} {p._data.redRangeName}
+                          </span>
+                        )
+                      }
+                      const r = getAgeRange(p._data?.birthDate, ageRanges)
+                      return r ? (
+                        <span className="text-[10px] font-bold px-1.5 py-0.5 rounded-[4px]"
+                          style={{ background: 'rgba(139,92,246,0.1)', color: '#8b5cf6', border: '1px solid rgba(139,92,246,0.2)' }}>
+                          {r.name}
+                        </span>
+                      ) : null
+                    })()}
                     {p._source === 'visitor' && (
                       <span className="text-[10px] font-bold px-1.5 py-0.5 rounded-[4px]"
                         style={{ background: 'rgba(59,130,246,0.1)', color: 'var(--text-3)', border: '1px solid var(--border)' }}>

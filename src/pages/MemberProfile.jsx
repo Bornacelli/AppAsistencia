@@ -82,9 +82,7 @@ export default function MemberProfile() {
   const statusIcon = { present: CheckCircle, absent: XCircle, late: CheckCircle }
   const statusColor = { present: 'var(--green)', absent: 'var(--red)', late: 'var(--green)' }
 
-  // Compute join date entries based on viewer's access
-  // Non-admin: show only the join date for the viewer's group(s)
-  // Admin: show per-group dates if member belongs to multiple groups
+
   const viewerGroupIds = isAdmin ? null : (profile?.groupIds || [])
   const relevantGroups = viewerGroupIds
     ? groups.filter(g => viewerGroupIds.includes(g.id))
@@ -136,12 +134,20 @@ export default function MemberProfile() {
               {member.sex === 'male' ? 'Masculino' : 'Femenino'}
             </span>
           )}
-          {ageRange && (
+          {member.redRole ? (
+            <span className="text-[11px] font-bold px-2.5 py-1 rounded-full"
+              style={{
+                background: member.redRole === 'leader' ? 'rgba(167,139,250,0.15)' : 'rgba(59,130,246,0.12)',
+                color: member.redRole === 'leader' ? '#a78bfa' : 'var(--accent)',
+              }}>
+              {member.redRole === 'leader' ? 'Líder' : 'Apoyo'} {member.redRangeName}
+            </span>
+          ) : ageRange ? (
             <span className="text-[11px] font-bold px-2.5 py-1 rounded-full"
               style={{ background: 'rgba(139,92,246,0.12)', color: '#8b5cf6' }}>
               {ageRange.name}
             </span>
-          )}
+          ) : null}
           {member.active === false && (
             <span className="text-[11px] font-bold px-2.5 py-1 rounded-full" style={{ background: 'var(--red-bg)', color: 'var(--red)' }}>Inactivo</span>
           )}

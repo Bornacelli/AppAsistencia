@@ -27,7 +27,7 @@ export default function Reports() {
   const [ageRanges, setAgeRanges] = useState([])
   const [loading,   setLoading]   = useState(true)
   const [selGroup,  setSelGroup]  = usePersistedState('rep_group', '')
-  const [dateFrom,  setDateFrom]  = usePersistedState('rep_from', localDateStr(new Date(Date.now() - 30 * 24 * 60 * 60 * 1000)))
+  const [dateFrom,  setDateFrom]  = usePersistedState('rep_from', localDateStr(new Date(Date.now() - 365 * 24 * 60 * 60 * 1000)))
   const [dateTo,    setDateTo]    = usePersistedState('rep_to',   todayStr())
   const [activeTab, setActiveTab] = usePersistedState('rep_tab', 'summary')
   const [expandedInviters,  setExpandedInviters]  = useState(new Set())
@@ -158,8 +158,6 @@ export default function Reports() {
     const counts = {}
     filteredMembers.forEach(m => {
       if (!m.referredById) return
-      if (dateFrom && m.joinDate && m.joinDate < dateFrom) return
-      if (dateTo   && m.joinDate && m.joinDate > dateTo)   return
       if (!counts[m.referredById]) counts[m.referredById] = []
       counts[m.referredById].push(m)
     })
